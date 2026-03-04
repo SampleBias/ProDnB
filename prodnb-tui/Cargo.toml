@@ -16,3 +16,5 @@ prodnb-midi = { path = "../prodnb-midi" }
 log = { workspace = true }
 rand = { workspace = true }
 spin = { workspace = true }
+reqwest = { workspace = true }
+serde_json = { workspace = true }

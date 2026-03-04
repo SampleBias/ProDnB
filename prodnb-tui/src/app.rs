@@ -1,4 +1,4 @@
-use prodnb_core::{Protein, ProteinFeatures, ArrangementPlan, DnBParameters, Style, CompositionEngine};
+use prodnb_core::{Protein, ProteinFeatures, ArrangementPlan, DnBParameters, Style, CompositionEngine, protein_to_strudel, protein_to_strudel_layered, default_strudel_code};
 use prodnb_audio::AudioEngine;
 use std::sync::Arc;
 use std::time::{Duration, Instant};
@@ -23,6 +23,7 @@ pub struct App {
     pub playback_state: PlaybackState,
 
     pub protein: Option<Protein>,
+    pub loaded_path: Option<String>,
     pub features: Option<ProteinFeatures>,
     pub arrangement: Option<ArrangementPlan>,
     pub parameters: DnBParameters,
@@ -36,6 +37,18 @@ pub struct App {
     pub fps: f64,
 
     pub should_quit: bool,
+
+    /// Strudel-like code editor: always visible, multi-line
+    pub editor_lines: Vec<String>,
+    pub editor_cursor_row: usize,
+    pub editor_cursor_col: usize,
+    pub editor_output: String,  // Last eval result or feedback
+
+    /// Set when arrangement changes (e.g. load, reseed); CLI should recreate playback
+    pub needs_audio_restart: bool,
+
+    /// Help overlay shown when user presses /
+    pub show_help_overlay: bool,
 }
 
 impl App {
@@ -44,6 +57,7 @@ impl App {
             state: AppState::Browsing,
             playback_state: PlaybackState::Stopped,
             protein: None,
+            loaded_path: None,
             features: None,
             arrangement: None,
             parameters: DnBParameters::default(),
@@ -54,10 +68,293 @@ impl App {
             last_frame_time: Instant::now(),
             fps: 0.0,
             should_quit: false,
+            editor_lines: vec![
+                "style liquid".into(),
+                "bpm 174".into(),
+                "intensity 0.5".into(),
+                "// Ctrl+Enter eval | Ctrl+. stop | / help".into(),
+            ],
+            editor_cursor_row: 0,
+            editor_cursor_col: 0,
+            editor_output: String::new(),
+            needs_audio_restart: false,
+            show_help_overlay: false,
         }
     }
 
-    pub fn load_protein(&mut self, protein: Protein) -> Result<()> {
+    pub fn editor_current_line(&self) -> &str {
+        self.editor_lines
+            .get(self.editor_cursor_row)
+            .map(|s| s.as_str())
+            .unwrap_or("")
+    }
+
+    pub fn editor_insert_char(&mut self, c: char) {
+        if self.editor_lines.is_empty() {
+            self.editor_lines.push(String::new());
+        }
+        let row = self.editor_cursor_row.min(self.editor_lines.len().saturating_sub(1));
+        let line = &mut self.editor_lines[row];
+        let col = self.editor_cursor_col.min(line.len());
+        line.insert(col, c);
+        self.editor_cursor_col = col + 1;
+    }
+
+    pub fn editor_backspace(&mut self) {
+        if self.editor_lines.is_empty() {
+            return;
+        }
+        let row = self.editor_cursor_row.min(self.editor_lines.len().saturating_sub(1));
+        let line = &mut self.editor_lines[row];
+        if self.editor_cursor_col > 0 {
+            let col = self.editor_cursor_col - 1;
+            line.remove(col);
+            self.editor_cursor_col = col;
+        } else if row > 0 {
+            let prev_len = self.editor_lines[row - 1].len();
+            let prev = self.editor_lines.remove(row);
+            self.editor_lines[row - 1].push_str(&prev);
+            self.editor_cursor_row = row - 1;
+            self.editor_cursor_col = prev_len;
+        }
+    }
+
+    pub fn editor_delete(&mut self) {
+        if self.editor_lines.is_empty() {
+            return;
+        }
+        let row = self.editor_cursor_row.min(self.editor_lines.len().saturating_sub(1));
+        if self.editor_cursor_col < self.editor_lines[row].len() {
+            self.editor_lines[row].remove(self.editor_cursor_col);
+        } else if row + 1 < self.editor_lines.len() {
+            let next = self.editor_lines.remove(row + 1);
+            self.editor_lines[row].push_str(&next);
+        }
+    }
+
+    pub fn editor_newline(&mut self) {
+        let row = self.editor_cursor_row.min(self.editor_lines.len().saturating_sub(1));
+        let line = &mut self.editor_lines[row];
+        let col = self.editor_cursor_col.min(line.len());
+        let rest: String = line.drain(col..).collect();
+        self.editor_lines.insert(row + 1, rest);
+        self.editor_cursor_row = row + 1;
+        self.editor_cursor_col = 0;
+    }
+
+    pub fn editor_move_left(&mut self) {
+        if self.editor_cursor_col > 0 {
+            self.editor_cursor_col -= 1;
+        } else if self.editor_cursor_row > 0 {
+            self.editor_cursor_row -= 1;
+            self.editor_cursor_col = self.editor_lines[self.editor_cursor_row].len();
+        }
+    }
+
+    pub fn editor_move_right(&mut self) {
+        let row = self.editor_cursor_row.min(self.editor_lines.len().saturating_sub(1));
+        let line_len = self.editor_lines.get(row).map(|s| s.len()).unwrap_or(0);
+        if self.editor_cursor_col < line_len {
+            self.editor_cursor_col += 1;
+        } else if self.editor_cursor_row + 1 < self.editor_lines.len() {
+            self.editor_cursor_row += 1;
+            self.editor_cursor_col = 0;
+        }
+    }
+
+    pub fn editor_move_up(&mut self) {
+        if self.editor_cursor_row > 0 {
+            self.editor_cursor_row -= 1;
+            self.editor_cursor_col = self.editor_cursor_col
+                .min(self.editor_lines[self.editor_cursor_row].len());
+        }
+    }
+
+    pub fn editor_move_down(&mut self) {
+        if self.editor_cursor_row + 1 < self.editor_lines.len() {
+            self.editor_cursor_row += 1;
+            let line_len = self.editor_lines[self.editor_cursor_row].len();
+            self.editor_cursor_col = self.editor_cursor_col.min(line_len);
+        }
+    }
+
+    pub fn editor_eval_current_line(&mut self) {
+        let line = self.editor_current_line().trim().to_string();
+        if line.is_empty() || line.starts_with("//") {
+            return;
+        }
+        self.editor_output = self.eval_command(&line);
+    }
+
+    pub fn editor_eval_all(&mut self) {
+        let mut out = Vec::new();
+        for line in &self.editor_lines.clone() {
+            let line = line.trim();
+            if line.is_empty() || line.starts_with("//") {
+                continue;
+            }
+            let result = self.eval_command(line);
+            if !result.is_empty() {
+                out.push(result);
+            }
+        }
+        self.editor_output = out.join(" | ");
+    }
+
+    pub fn set_intensity(&mut self, value: f32) {
+        self.parameters.intensity = value.clamp(0.0, 1.0);
+    }
+
+    pub fn set_complexity(&mut self, value: f32) {
+        self.parameters.complexity = value.clamp(0.0, 1.0);
+    }
+
+    pub fn set_bpm(&mut self, bpm: u16) {
+        self.parameters.bpm = bpm.clamp(60, 240);
+        if let Some(ref mut arr) = self.arrangement {
+            arr.bpm = self.parameters.bpm;
+        }
+    }
+
+    /// Evaluate a REPL command and apply it. Returns feedback message.
+    pub fn eval_command(&mut self, cmd: &str) -> String {
+        let cmd = cmd.trim();
+        if cmd.is_empty() {
+            return String::new();
+        }
+
+        // Strudel compatibility: setcps(x) → set our BPM
+        if cmd.trim().starts_with("setcps(") {
+            if let Some(inner) = cmd.trim().strip_prefix("setcps(").and_then(|s| s.strip_suffix(')')) {
+                if let Ok(cps) = inner.trim().parse::<f64>() {
+                    let bpm = (cps * 60.0 * 4.0).round() as u16;
+                    self.set_bpm(bpm.clamp(60, 240));
+                    return format!("BPM set to {} (from setcps)", bpm);
+                }
+            }
+        }
+
+        let parts: Vec<&str> = cmd.split_whitespace().collect();
+        let first = parts.first().map(|s| s.to_lowercase()).unwrap_or_default();
+        match first.as_str() {
+            "style" => {
+                let v = parts.get(1).map(|s| s.to_lowercase()).unwrap_or_default();
+                match v.as_str() {
+                    "1" | "liquid" => {
+                        self.set_style(Style::Liquid);
+                        "Style: Liquid".into()
+                    }
+                    "2" | "jungle" => {
+                        self.set_style(Style::Jungle);
+                        "Style: Jungle".into()
+                    }
+                    "3" | "neuro" => {
+                        self.set_style(Style::Neuro);
+                        "Style: Neuro".into()
+                    }
+                    _ => "Usage: style 1|2|3 or liquid|jungle|neuro".into(),
+                }
+            }
+            "intensity" => {
+                let v = parts.get(1).unwrap_or(&"");
+                if let Ok(f) = v.parse::<f32>() {
+                    self.set_intensity(f);
+                    format!("Intensity: {:.2}", self.parameters.intensity)
+                } else {
+                    "Usage: intensity 0.0-1.0".into()
+                }
+            }
+            "complexity" => {
+                let v = parts.get(1).unwrap_or(&"");
+                if let Ok(f) = v.parse::<f32>() {
+                    self.set_complexity(f);
+                    format!("Complexity: {:.2}", self.parameters.complexity)
+                } else {
+                    "Usage: complexity 0.0-1.0".into()
+                }
+            }
+            "bpm" => {
+                let v = parts.get(1).unwrap_or(&"");
+                if let Ok(b) = v.parse::<u16>() {
+                    self.set_bpm(b);
+                    if let Some(ref mut arr) = self.arrangement {
+                        arr.bpm = self.parameters.bpm;
+                    }
+                    format!("BPM: {}", self.parameters.bpm)
+                } else {
+                    "Usage: bpm 60-240".into()
+                }
+            }
+            "reseed" => {
+                self.reseed();
+                format!("Reseeded: {}", self.seed)
+            }
+            "help" => {
+                "Commands: load, style, bpm, intensity, complexity, reseed, strudel, code, layer, llm".into()
+            }
+            "strudel" | "code" => {
+                let code = if let Some(ref p) = self.protein {
+                    protein_to_strudel(p, self.parameters.bpm)
+                } else {
+                    default_strudel_code(self.parameters.bpm)
+                };
+                // Insert generated code into editor for user to run
+                for line in code.lines() {
+                    self.editor_lines.push(line.to_string());
+                }
+                format!("Inserted {} lines (Ctrl+Enter to eval)", code.lines().count())
+            }
+            "layer" => {
+                if let Some(ref p) = self.protein {
+                    let code = protein_to_strudel_layered(p, self.parameters.bpm);
+                    for line in code.lines() {
+                        self.editor_lines.push(line.to_string());
+                    }
+                    format!("Inserted {} lines (layered by chain)", code.lines().count())
+                } else {
+                    "Load a PDB first: load path/to/file.pdb".into()
+                }
+            }
+            "llm" | "reorganize" => {
+                if let Some(ref p) = self.loaded_path {
+                    match std::fs::read_to_string(p) {
+                        Ok(pdb_content) => match crate::llm::reorganize_with_llm(&pdb_content) {
+                            Ok(code) => {
+                                for line in code.lines() {
+                                    self.editor_lines.push(line.to_string());
+                                }
+                                format!("LLM inserted {} lines", code.lines().count())
+                            }
+                            Err(e) => format!("LLM error: {}", e),
+                        },
+                        Err(e) => format!("Read failed: {}", e),
+                    }
+                } else {
+                    "Load a PDB first: load path/to/file.pdb".into()
+                }
+            }
+            "load" => {
+                let path = parts.get(1..).map(|p| p.join(" ")).unwrap_or_default().trim().to_string();
+                if path.is_empty() {
+                    "Usage: load <path/to/file.pdb>".into()
+                } else {
+                    match Protein::load_from_file(&path) {
+                        Ok(protein) => {
+                            if let Err(e) = self.load_protein(protein, path.clone()) {
+                                format!("Load failed: {}", e)
+                            } else {
+                                format!("Loaded {}", path)
+                            }
+                        }
+                        Err(e) => format!("Load failed: {}", e),
+                    }
+                }
+            }
+            _ => format!("Unknown: '{}'. Type 'help' for commands.", first),
+        }
+    }
+
+    pub fn load_protein(&mut self, protein: Protein, path: String) -> Result<()> {
         let features = prodnb_core::FeatureExtractor::extract(&protein)?;
 
         let mut composer = CompositionEngine::new(self.seed);
@@ -66,9 +363,11 @@ impl App {
         let arrangement = composer.compose(&features, &params)?;
 
         self.protein = Some(protein);
+        self.loaded_path = Some(path);
         self.features = Some(features);
         self.arrangement = Some(arrangement);
         self.parameters = params;
+        self.needs_audio_restart = true;
 
         Ok(())
     }
@@ -142,6 +441,7 @@ impl App {
 
             self.parameters = params;
             self.arrangement = arrangement;
+            self.needs_audio_restart = true;
         }
     }
 

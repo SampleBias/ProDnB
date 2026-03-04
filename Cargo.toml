@@ -30,3 +30,5 @@ rand_chacha = "0.3"
 spin = "0.9"
 log = "0.4"
 env_logger = "0.11"
+reqwest = { version = "0.12", features = ["blocking", "json"] }
+dotenvy = "0.15"

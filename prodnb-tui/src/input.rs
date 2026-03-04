@@ -35,52 +35,60 @@ impl InputHandler {
     }
 
     fn handle_key_event(key: KeyEvent, app: &mut App) {
+        let ctrl = key.modifiers.contains(KeyModifiers::CONTROL);
+
+        // Global shortcuts (work even in editor)
+        if ctrl && key.code == KeyCode::Char('q') {
+            app.should_quit = true;
+            return;
+        }
+        if ctrl && key.code == KeyCode::Char('.') {
+            app.stop_playback();
+            return;
+        }
+        if ctrl && key.code == KeyCode::Char('l') {
+            app.editor_output.clear();
+            return;
+        }
+
+        // Ctrl+Enter: evaluate (Strudel convention)
+        if ctrl && key.code == KeyCode::Enter {
+            app.editor_eval_current_line();
+            return;
+        }
+        if ctrl && key.code == KeyCode::Char('e') {
+            app.editor_eval_all();
+            return;
+        }
+
+        // Space: play/pause (Strudel: evaluation starts playback)
+        if key.code == KeyCode::Char(' ') && key.modifiers.is_empty() {
+            app.toggle_playback();
+            return;
+        }
+
+        // / or Escape: toggle help overlay
+        if app.show_help_overlay {
+            if key.code == KeyCode::Char('/') || key.code == KeyCode::Esc {
+                app.show_help_overlay = false;
+            }
+            return;
+        }
+        if key.code == KeyCode::Char('/') && key.modifiers.is_empty() {
+            app.show_help_overlay = true;
+            return;
+        }
+
+        // Editor navigation and input
         match key.code {
-            KeyCode::Char('q') | KeyCode::Char('Q') => {
-                app.should_quit = true;
-            }
-            KeyCode::Char(' ') => {
-                app.toggle_playback();
-            }
-            KeyCode::Char('s') | KeyCode::Char('S') => {
-                app.stop_playback();
-            }
-            KeyCode::Left => {
-                app.seek(-4);
-            }
-            KeyCode::Right => {
-                app.seek(4);
-            }
-            KeyCode::Char('1') => {
-                app.set_style(Style::Liquid);
-            }
-            KeyCode::Char('2') => {
-                app.set_style(Style::Jungle);
-            }
-            KeyCode::Char('3') => {
-                app.set_style(Style::Neuro);
-            }
-            KeyCode::Up => {
-                app.adjust_intensity(0.1);
-            }
-            KeyCode::Down => {
-                app.adjust_intensity(-0.1);
-            }
-            KeyCode::Char(']') => {
-                app.adjust_complexity(0.1);
-            }
-            KeyCode::Char('[') => {
-                app.adjust_complexity(-0.1);
-            }
-            KeyCode::Char('e') | KeyCode::Char('E') => {
-                app.export(ExportFormat::Midi);
-            }
-            KeyCode::Char('r') | KeyCode::Char('R') => {
-                app.reseed();
-            }
-            KeyCode::Esc => {
-                app.stop_playback();
-            }
+            KeyCode::Up => app.editor_move_up(),
+            KeyCode::Down => app.editor_move_down(),
+            KeyCode::Left => app.editor_move_left(),
+            KeyCode::Right => app.editor_move_right(),
+            KeyCode::Enter => app.editor_newline(),
+            KeyCode::Backspace => app.editor_backspace(),
+            KeyCode::Delete => app.editor_delete(),
+            KeyCode::Char(c) => app.editor_insert_char(c),
             _ => {}
         }
     }

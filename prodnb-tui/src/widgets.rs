@@ -26,7 +26,22 @@ impl Widget for Oscilloscope<'_> {
         let inner = block.inner(area);
         block.render(area, buf);
 
+        let width = inner.width as usize;
+        let height = inner.height as usize;
+        let center_y = inner.y + (height / 2) as u16;
+
         if self.samples.is_empty() || inner.height < 2 {
+            // Default: draw a sine wave placeholder
+            for x in 0..width {
+                let t = x as f64 / width as f64 * std::f64::consts::PI * 4.0;
+                let y_offset = ((t.sin() * 0.4) * (height as f64 / 2.0)).floor() as i32;
+                let y = (center_y as i32 - y_offset).clamp(inner.y as i32, (inner.y + inner.height - 1) as i32) as u16;
+                let symbol = if x % 4 == 0 { "░" } else { "·" };
+                buf.set_string(inner.x + x as u16, y, symbol, Style::default().fg(Color::DarkGray));
+            }
+            for y in inner.top()..inner.bottom() {
+                buf.set_string(inner.x + width as u16 / 2, y, "─", Style::default().fg(Color::DarkGray));
+            }
             return;
         }
 
@@ -130,6 +145,22 @@ impl Widget for Spectrum<'_> {
         let bands = self.bands.min(inner.width as usize);
         let band_width = inner.width as usize / bands;
         let height = inner.height as usize - 1;
+
+        if self.samples.is_empty() {
+            // Default: draw gradient bars
+            for band in 0..bands {
+                let mag = 0.3 + 0.5 * (band as f32 / bands as f32).sin();
+                let bars = (mag * height as f32).floor() as usize;
+                for i in 0..bars.min(height) {
+                    let y = inner.y + height as u16 - 1 - i as u16;
+                    let x = inner.x + (band * band_width) as u16;
+                    let symbol = if i == bars.saturating_sub(1) { "▀" } else { "▓" };
+                    let color = self.frequency_color(band, bands);
+                    buf.set_string(x, y, symbol, Style::default().fg(color));
+                }
+            }
+            return;
+        }
 
         for band in 0..bands {
             let magnitude = self.simplify_magnitude(band, bands);
@@ -270,26 +301,34 @@ impl Widget for Vectorscope<'_> {
             }
         }
 
-        for i in (0..self.samples.len()).step_by(2) {
-            if i + 1 >= self.samples.len() {
-                break;
+        if self.samples.is_empty() {
+            // Default: Lissajous curve (3:2 ratio)
+            for i in 0..180 {
+                let t = i as f64 * std::f64::consts::PI * 2.0 / 180.0;
+                let lx = (t * 3.0).sin();
+                let ly = (t * 2.0).sin();
+                let x = center_x as i32 + (radius as f64 * lx * 0.8).round() as i32;
+                let y = center_y as i32 - (radius as f64 * ly * 0.8).round() as i32;
+                if x >= center_x as i32 - radius && x <= center_x as i32 + radius
+                    && y >= center_y as i32 - radius && y <= center_y as i32 + radius
+                {
+                    buf.set_string(x as u16, y as u16, "•", Style::default().fg(Color::Cyan));
+                }
             }
-
-            let left = self.samples[i];
-            let right = self.samples[i + 1];
-
-            let x = center_x as i32 + (radius as f32 * left).round() as i32;
-            let y = center_y as i32 - (radius as f32 * right).round() as i32;
-
-            if x >= center_x as i32 - radius && x <= center_x as i32 + radius
-                && y >= center_y as i32 - radius && y <= center_y as i32 + radius
-            {
-                buf.set_string(
-                    x as u16,
-                    y as u16,
-                    "•",
-                    Style::default().fg(Color::Green),
-                );
+        } else {
+            for i in (0..self.samples.len()).step_by(2) {
+                if i + 1 >= self.samples.len() {
+                    break;
+                }
+                let left = self.samples[i];
+                let right = self.samples[i + 1];
+                let x = center_x as i32 + (radius as f32 * left).round() as i32;
+                let y = center_y as i32 - (radius as f32 * right).round() as i32;
+                if x >= center_x as i32 - radius && x <= center_x as i32 + radius
+                    && y >= center_y as i32 - radius && y <= center_y as i32 + radius
+                {
+                    buf.set_string(x as u16, y as u16, ".", Style::default().fg(Color::Green));
+                }
             }
         }
     }

@@ -1,3 +1,5 @@
+mod playback;
+
 use clap::{Parser, Subcommand};
 use anyhow::{Result, Context};
 use prodnb_core::Protein;
@@ -48,7 +50,17 @@ enum Commands {
 }
 
 fn main() -> Result<()> {
+    dotenvy::dotenv().ok();
     env_logger::init();
+
+    // If single arg looks like a PDB/mmCIF file, treat as `tui <file>` for convenience
+    let args: Vec<String> = std::env::args().collect();
+    if args.len() == 2 {
+        let a = &args[1];
+        if !a.starts_with('-') && (a.ends_with(".pdb") || a.ends_with(".cif") || a.ends_with(".ent")) {
+            return run_tui(Some(a.clone()));
+        }
+    }
 
     let cli = Cli::parse();
 
@@ -67,16 +79,31 @@ fn run_tui(file_path: Option<String>) -> Result<()> {
     let mut terminal = Terminal::new(backend)?;
 
     let mut app = App::new();
+    let mut playback_driver: Option<playback::PlaybackDriver> = None;
 
-    if let Some(path) = file_path {
+    if let Some(path) = file_path.clone() {
         match load_protein(&path) {
             Ok(protein) => {
-                if let Err(e) = app.load_protein(protein) {
+                if let Err(e) = app.load_protein(protein, path) {
                     eprintln!("Warning: Failed to extract features: {}", e);
                 }
             }
             Err(e) => {
                 eprintln!("Error loading file {}: {}", path, e);
+            }
+        }
+    }
+
+    if let Some(ref arr) = app.arrangement {
+        match playback::PlaybackDriver::new(arr) {
+            Ok(driver) => {
+                app.set_audio_engine(driver.engine.clone());
+                playback_driver = Some(driver);
+            }
+            Err(e) => {
+                eprintln!("Audio not available (install a SoundFont): {}", e);
+                eprintln!("  Arch: pacman -S soundfont-fluid");
+                eprintln!("  Debian: apt install fluid-soundfont-gm");
             }
         }
     }
@@ -102,6 +129,32 @@ fn run_tui(file_path: Option<String>) -> Result<()> {
         }
 
         if last_tick.elapsed() >= tick_rate {
+            if app.needs_audio_restart {
+                app.needs_audio_restart = false;
+                if let Some(ref arr) = app.arrangement {
+                    match playback::PlaybackDriver::new(arr) {
+                        Ok(driver) => {
+                            app.set_audio_engine(driver.engine.clone());
+                            playback_driver = Some(driver);
+                        }
+                        Err(_) => {}
+                    }
+                }
+            }
+            if let Some(ref driver) = playback_driver {
+                match app.playback_state {
+                    prodnb_tui::PlaybackState::Playing => {
+                        let _ = driver.play();
+                        app.current_bar = driver.current_bar();
+                    }
+                    prodnb_tui::PlaybackState::Paused => {
+                        let _ = driver.pause();
+                    }
+                    prodnb_tui::PlaybackState::Stopped => {
+                        let _ = driver.stop();
+                    }
+                }
+            }
             app.update();
             last_tick = Instant::now();
         }
@@ -127,7 +180,7 @@ fn run_render(file_path: String, output_path: Option<String>, style_num: u8, see
              protein.residue_count());
 
     let mut app = App::new();
-    app.load_protein(protein)?;
+    app.load_protein(protein, file_path.clone())?;
 
     let seed = seed.unwrap_or(42);
     app.seed = seed;
