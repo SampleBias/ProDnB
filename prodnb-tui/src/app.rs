@@ -56,6 +56,10 @@ pub struct App {
     pub llm_stream_receiver: Option<mpsc::Receiver<LlmStreamMsg>>,
     pub llm_stream_buffer: String,
     pub llm_stream_error: Option<String>,
+
+    /// PDB path input (easy load) and focus
+    pub pdb_path_input: String,
+    pub focus_path_input: bool,
 }
 
 impl App {
@@ -89,6 +93,55 @@ impl App {
             llm_stream_receiver: None,
             llm_stream_buffer: String::new(),
             llm_stream_error: None,
+            pdb_path_input: String::new(),
+            focus_path_input: true,
+        }
+    }
+
+    /// Load PDB from path input. Returns feedback message.
+    pub fn load_from_path_input(&mut self) -> String {
+        let path = self.pdb_path_input.trim().to_string();
+        if path.is_empty() {
+            return "Enter a path first".into();
+        }
+        match prodnb_core::Protein::load_from_file(&path) {
+            Ok(protein) => {
+                if let Err(e) = self.load_protein(protein, path.clone()) {
+                    format!("Load failed: {}", e)
+                } else {
+                    format!("Loaded {}", path)
+                }
+            }
+            Err(e) => format!("Load failed: {}", e),
+        }
+    }
+
+    /// Submit loaded PDB to LLM. Returns feedback message.
+    pub fn submit_to_llm(&mut self) -> String {
+        if self.llm_stream_receiver.is_some() {
+            return "Already streaming...".into();
+        }
+        let path = self.loaded_path.as_ref()
+            .map(|s| s.as_str())
+            .or_else(|| {
+                let p = self.pdb_path_input.trim();
+                if p.is_empty() { None } else { Some(p) }
+            });
+        if let Some(p) = path {
+            match std::fs::read_to_string(p) {
+                Ok(content) => match stream_llm(content) {
+                    Ok(rx) => {
+                        self.llm_stream_receiver = Some(rx);
+                        self.llm_stream_buffer.clear();
+                        self.llm_stream_error = None;
+                        "⟳ Submitting to Groq Compound...".into()
+                    }
+                    Err(e) => format!("Submit error: {}", e),
+                },
+                Err(e) => format!("Read failed: {}", e),
+            }
+        } else {
+            "Load a PDB file first".into()
         }
     }
 
@@ -108,11 +161,18 @@ impl App {
                 }
                 Ok(LlmStreamMsg::Done) => {
                     self.llm_stream_receiver = None;
-                    let code = strip_strudel_markdown(std::mem::take(&mut self.llm_stream_buffer));
+                    let mut full = std::mem::take(&mut self.llm_stream_buffer);
+                    // Remove status prefix like "Calling Groq Compound...\n"
+                    if let Some(idx) = full.find("setcps(") {
+                        full = full[idx..].to_string();
+                    } else if let Some(idx) = full.find("sound(") {
+                        full = full[idx..].to_string();
+                    }
+                    let code = strip_strudel_markdown(full);
                     for line in code.lines() {
                         self.editor_lines.push(line.to_string());
                     }
-                    self.editor_output = format!("LLM streamed {} chars into editor", code.len());
+                    self.editor_output = format!("LLM: {} chars → editor", code.len());
                     break;
                 }
                 Ok(LlmStreamMsg::Error(e)) => {

@@ -1,6 +1,5 @@
 use crossterm::event::{Event, KeyCode, KeyEvent, KeyModifiers};
-use crate::app::{App, ExportFormat};
-use prodnb_core::Style;
+use crate::app::App;
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum InputAction {
@@ -61,9 +60,42 @@ impl InputHandler {
             return;
         }
 
-        // Space: play/pause (Strudel: evaluation starts playback)
+        // Space: Start / play/pause
         if key.code == KeyCode::Char(' ') && key.modifiers.is_empty() {
             app.toggle_playback();
+            return;
+        }
+
+        // Ctrl+S: Submit to LLM
+        if ctrl && key.code == KeyCode::Char('s') {
+            app.editor_output = app.submit_to_llm();
+            return;
+        }
+
+        // Tab: switch between path input and editor
+        if key.code == KeyCode::Tab {
+            app.focus_path_input = !app.focus_path_input;
+            return;
+        }
+
+        // Path input mode: type path, Enter = Load
+        if app.focus_path_input {
+            match key.code {
+                KeyCode::Enter => {
+                    app.editor_output = app.load_from_path_input();
+                }
+                KeyCode::Backspace => {
+                    app.pdb_path_input.pop();
+                }
+                KeyCode::Char(c) => {
+                    app.pdb_path_input.push(c);
+                }
+                KeyCode::Left => {
+                    // Could add cursor in path, skip for now
+                }
+                KeyCode::Right => {}
+                _ => {}
+            }
             return;
         }
 

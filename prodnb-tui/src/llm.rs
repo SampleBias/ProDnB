@@ -4,7 +4,6 @@
 
 use anyhow::Result;
 use serde_json::json;
-use std::io::{BufRead, BufReader};
 use std::sync::mpsc;
 
 const PROMPT: &str = r#"You are a music programmer. Convert this PDB protein structure into Strudel (strudel.cc) drum pattern code.
@@ -32,83 +31,25 @@ pub enum LlmStreamMsg {
     Error(String),
 }
 
-/// Start streaming LLM response in a background thread. Returns receiver for main loop to poll.
+/// Start LLM request in a background thread. Fetches from Groq and sends result to output area.
+/// Uses blocking API (Compound may not stream reliably). Code appears in output when done.
 pub fn stream_llm(pdb_content: String) -> Result<mpsc::Receiver<LlmStreamMsg>> {
-    let api_key = std::env::var("GROQ_API_KEY")
+    std::env::var("GROQ_API_KEY")
         .map_err(|_| anyhow::anyhow!("Set GROQ_API_KEY in .env to use LLM"))?;
 
     let (tx, rx) = mpsc::channel();
 
     std::thread::spawn(move || {
-        let user_content = format!(
-            "{}\n\nOutput ONLY valid Strudel code. No markdown, no explanation.\n\nPDB content:\n{}",
-            PROMPT, pdb_content
-        );
-
-        let client = match reqwest::blocking::Client::builder()
-            .connect_timeout(std::time::Duration::from_secs(15))
-            .timeout(std::time::Duration::from_secs(120))
-            .build()
-        {
-            Ok(c) => c,
-            Err(e) => {
-                let _ = tx.send(LlmStreamMsg::Error(format!("HTTP client: {}", e)));
-                return;
+        let _ = tx.send(LlmStreamMsg::Chunk("Calling Groq Compound...\n".into()));
+        match reorganize_with_llm(&pdb_content) {
+            Ok(code) => {
+                let _ = tx.send(LlmStreamMsg::Chunk(code));
             }
-        };
-
-        let body = json!({
-            "model": "groq/compound",
-            "stream": true,
-            "messages": [
-                {"role": "system", "content": "You output only valid Strudel code. No markdown, no explanation."},
-                {"role": "user", "content": user_content}
-            ],
-            "max_tokens": 1024,
-            "temperature": 0.3
-        });
-
-        let response = match client
-            .post("https://api.groq.com/openai/v1/chat/completions")
-            .header("Content-Type", "application/json")
-            .header("Authorization", format!("Bearer {}", api_key))
-            .json(&body)
-            .send()
-        {
-            Ok(r) => r,
             Err(e) => {
                 let _ = tx.send(LlmStreamMsg::Error(e.to_string()));
                 return;
             }
-        };
-
-        if !response.status().is_success() {
-            let text = response.text().unwrap_or_default();
-            let _ = tx.send(LlmStreamMsg::Error(format!("API error: {}", text)));
-            return;
         }
-
-        let reader = BufReader::new(response);
-        for line in reader.lines() {
-            let line = match line {
-                Ok(l) => l,
-                Err(_) => break,
-            };
-            if line.starts_with("data: ") {
-                let data = line.trim_start_matches("data: ").trim();
-                if data == "[DONE]" {
-                    break;
-                }
-                if let Ok(json) = serde_json::from_str::<serde_json::Value>(data) {
-                    if let Some(content) = json["choices"][0]["delta"]["content"].as_str() {
-                        if !content.is_empty() && tx.send(LlmStreamMsg::Chunk(content.to_string())).is_err() {
-                            return;
-                        }
-                    }
-                }
-            }
-        }
-
         let _ = tx.send(LlmStreamMsg::Done);
     });
 

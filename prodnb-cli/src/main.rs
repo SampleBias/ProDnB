@@ -88,6 +88,8 @@ fn run_tui(file_path: Option<String>) -> Result<()> {
     let mut playback_driver: Option<playback::PlaybackDriver> = None;
 
     if let Some(path) = file_path.clone() {
+        app.pdb_path_input = path.clone();
+        app.focus_path_input = false;
         match load_protein(&path) {
             Ok(protein) => {
                 if let Err(e) = app.load_protein(protein, path) {
