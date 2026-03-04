@@ -164,7 +164,7 @@ class ProDnBApp {
         // Update UI to loading state
         this.setGeneratingState(true);
         this.strudelCode.textContent = '// Generating Strudel code...';
-        this.strudelCode.style.color = '#9ca3af';
+        this.strudelCode.style.color = '#666666';
 
         try {
             const response = await fetch('/api/generate', {
@@ -194,7 +194,7 @@ class ProDnBApp {
         } catch (error) {
             console.error('Generation error:', error);
             this.strudelCode.textContent = `// Error: ${error.message}`;
-            this.strudelCode.style.color = '#ef4444';
+            this.strudelCode.style.color = '#b91c1c';
             this.showStatus(error.message || 'Failed to generate code', 'error');
         } finally {
             this.setGeneratingState(false);
