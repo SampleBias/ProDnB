@@ -22,23 +22,70 @@ mod theme {
 pub fn draw_ui(f: &mut Frame, app: &App) {
     let size = f.area();
 
-    let chunks = Layout::default()
-        .direction(Direction::Vertical)
-        .margin(0)
-        .constraints([
+    let constraints: &[Constraint] = if app.llm_streaming() {
+        // Strudel-like: editor + streaming output + viz + footer
+        &[
+            Constraint::Length(8),
+            Constraint::Length(12),
+            Constraint::Min(8),
+            Constraint::Length(4),
+        ]
+    } else {
+        &[
             Constraint::Length(8),
             Constraint::Min(10),
             Constraint::Length(4),
-        ])
+        ]
+    };
+
+    let chunks = Layout::default()
+        .direction(Direction::Vertical)
+        .margin(0)
+        .constraints(constraints)
         .split(size);
 
     draw_editor(f, app, chunks[0]);
-    draw_visualizations(f, app, chunks[1]);
-    draw_footer(f, app, chunks[2]);
+
+    if app.llm_streaming() {
+        draw_llm_stream(f, app, chunks[1]);
+        draw_visualizations(f, app, chunks[2]);
+        draw_footer(f, app, chunks[3]);
+    } else {
+        draw_visualizations(f, app, chunks[1]);
+        draw_footer(f, app, chunks[2]);
+    }
 
     if app.show_help_overlay {
         draw_help_overlay(f, size);
     }
+}
+
+fn draw_llm_stream(f: &mut Frame, app: &App, area: ratatui::layout::Rect) {
+    let block = Block::default()
+        .borders(Borders::ALL)
+        .title(" ⟳ LLM streaming (Groq Compound) ")
+        .title_style(ratatui::style::Style::default().fg(ratatui::style::Color::Cyan))
+        .border_style(ratatui::style::Style::default().fg(theme::BORDER))
+        .style(ratatui::style::Style::default().bg(theme::BG));
+
+    let inner = block.inner(area);
+    f.render_widget(block, area);
+
+    let text = if let Some(ref err) = app.llm_stream_error {
+        vec![Line::from(Span::styled(err, ratatui::style::Style::default().fg(ratatui::style::Color::Red)))]
+    } else if app.llm_stream_buffer.is_empty() {
+        vec![Line::from(Span::styled("Waiting for response...", ratatui::style::Style::default().fg(theme::COMMENT)))]
+    } else {
+        app.llm_stream_buffer
+            .lines()
+            .map(|l| Line::from(Span::styled(l, ratatui::style::Style::default().fg(theme::STRING))))
+            .collect::<Vec<_>>()
+    };
+
+    let para = Paragraph::new(text)
+        .scroll((app.llm_stream_buffer.lines().count().saturating_sub(inner.height as usize) as u16, 0))
+        .wrap(Wrap { trim: false });
+    f.render_widget(para, inner);
 }
 
 fn draw_help_overlay(f: &mut Frame, area: Rect) {

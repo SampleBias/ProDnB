@@ -1,9 +1,11 @@
 //! LLM API integration for reorganizing PDB structure into Strudel code.
 //!
-//! Uses Groq Cloud with Llama. Set GROQ_API_KEY to enable.
+//! Uses Groq Cloud (Compound). Set GROQ_API_KEY in .env to enable.
 
 use anyhow::Result;
 use serde_json::json;
+use std::io::{BufRead, BufReader};
+use std::sync::mpsc;
 
 const PROMPT: &str = r#"You are a music programmer. Convert this PDB protein structure into Strudel (strudel.cc) drum pattern code.
 
@@ -20,25 +22,126 @@ Create a Drum & Bass style pattern. Use Strudel syntax:
 - stack([...]) for layering
 - Use * for repetition, ~ for rest
 
-Return ONLY the Strudel code, no explanation. Use setcps around 0.7 for 174 BPM."#;
+Return ONLY the Strudel code, no markdown, no explanation. Use setcps around 0.7 for 174 BPM."#;
 
-/// Call Groq Cloud (Compound) to reorganize PDB content and return Strudel code.
-/// Uses the Responses API: POST /openai/v1/responses with model groq/compound.
+/// Stream event from LLM
+#[derive(Debug)]
+pub enum LlmStreamMsg {
+    Chunk(String),
+    Done,
+    Error(String),
+}
+
+/// Start streaming LLM response in a background thread. Returns receiver for main loop to poll.
+pub fn stream_llm(pdb_content: String) -> Result<mpsc::Receiver<LlmStreamMsg>> {
+    let api_key = std::env::var("GROQ_API_KEY")
+        .map_err(|_| anyhow::anyhow!("Set GROQ_API_KEY in .env to use LLM"))?;
+
+    let (tx, rx) = mpsc::channel();
+
+    std::thread::spawn(move || {
+        let user_content = format!(
+            "{}\n\nOutput ONLY valid Strudel code. No markdown, no explanation.\n\nPDB content:\n{}",
+            PROMPT, pdb_content
+        );
+
+        let client = match reqwest::blocking::Client::builder()
+            .connect_timeout(std::time::Duration::from_secs(15))
+            .timeout(std::time::Duration::from_secs(120))
+            .build()
+        {
+            Ok(c) => c,
+            Err(e) => {
+                let _ = tx.send(LlmStreamMsg::Error(format!("HTTP client: {}", e)));
+                return;
+            }
+        };
+
+        let body = json!({
+            "model": "groq/compound",
+            "stream": true,
+            "messages": [
+                {"role": "system", "content": "You output only valid Strudel code. No markdown, no explanation."},
+                {"role": "user", "content": user_content}
+            ],
+            "max_tokens": 1024,
+            "temperature": 0.3
+        });
+
+        let response = match client
+            .post("https://api.groq.com/openai/v1/chat/completions")
+            .header("Content-Type", "application/json")
+            .header("Authorization", format!("Bearer {}", api_key))
+            .json(&body)
+            .send()
+        {
+            Ok(r) => r,
+            Err(e) => {
+                let _ = tx.send(LlmStreamMsg::Error(e.to_string()));
+                return;
+            }
+        };
+
+        if !response.status().is_success() {
+            let text = response.text().unwrap_or_default();
+            let _ = tx.send(LlmStreamMsg::Error(format!("API error: {}", text)));
+            return;
+        }
+
+        let reader = BufReader::new(response);
+        for line in reader.lines() {
+            let line = match line {
+                Ok(l) => l,
+                Err(_) => break,
+            };
+            if line.starts_with("data: ") {
+                let data = line.trim_start_matches("data: ").trim();
+                if data == "[DONE]" {
+                    break;
+                }
+                if let Ok(json) = serde_json::from_str::<serde_json::Value>(data) {
+                    if let Some(content) = json["choices"][0]["delta"]["content"].as_str() {
+                        if !content.is_empty() && tx.send(LlmStreamMsg::Chunk(content.to_string())).is_err() {
+                            return;
+                        }
+                    }
+                }
+            }
+        }
+
+        let _ = tx.send(LlmStreamMsg::Done);
+    });
+
+    Ok(rx)
+}
+
+/// Call Groq Cloud (Compound) to reorganize PDB content and return Strudel code (blocking).
 pub fn reorganize_with_llm(pdb_content: &str) -> Result<String> {
     let api_key = std::env::var("GROQ_API_KEY")
         .map_err(|_| anyhow::anyhow!("Set GROQ_API_KEY in .env to use LLM (Groq Cloud)"))?;
 
-    let input = format!(
+    let user_content = format!(
         "{}\n\nOutput ONLY valid Strudel code, no markdown or explanation.\n\nPDB content:\n{}",
         PROMPT, pdb_content
     );
 
-    let client = reqwest::blocking::Client::new();
-    let url = "https://api.groq.com/openai/v1/responses";
+    // Compound can take 60–120s (tool use, reasoning). Use generous timeouts.
+    let client = reqwest::blocking::Client::builder()
+        .connect_timeout(std::time::Duration::from_secs(15))
+        .timeout(std::time::Duration::from_secs(120))
+        .build()
+        .map_err(|e| anyhow::anyhow!("HTTP client: {}", e))?;
+
+    let url = "https://api.groq.com/openai/v1/chat/completions";
 
     let body = json!({
         "model": "groq/compound",
-        "input": input
+        "messages": [
+            {"role": "system", "content": "You output only valid Strudel code. No markdown, no explanation."},
+            {"role": "user", "content": user_content}
+        ],
+        "max_tokens": 1024,
+        "temperature": 0.3
     });
 
     let response = client
@@ -46,7 +149,17 @@ pub fn reorganize_with_llm(pdb_content: &str) -> Result<String> {
         .header("Content-Type", "application/json")
         .header("Authorization", format!("Bearer {}", api_key))
         .json(&body)
-        .send()?;
+        .send()
+        .map_err(|e| {
+            let msg = e.to_string();
+            if msg.contains("timed out") {
+                anyhow::anyhow!(
+                    "LLM request timed out (Compound can take 60–120s). Check network or try again."
+                )
+            } else {
+                anyhow::anyhow!("LLM request failed: {}. Ensure GROQ_API_KEY is valid and network is reachable.", msg)
+            }
+        })?;
 
     if !response.status().is_success() {
         let status = response.status();
@@ -55,9 +168,9 @@ pub fn reorganize_with_llm(pdb_content: &str) -> Result<String> {
     }
 
     let json: serde_json::Value = response.json()?;
-    let content = json["output_text"]
+    let content = json["choices"][0]["message"]["content"]
         .as_str()
-        .ok_or_else(|| anyhow::anyhow!("No output_text in LLM response"))?
+        .ok_or_else(|| anyhow::anyhow!("No content in LLM response"))?
         .trim()
         .to_string();
 

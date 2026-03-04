@@ -1,8 +1,10 @@
 use prodnb_core::{Protein, ProteinFeatures, ArrangementPlan, DnBParameters, Style, CompositionEngine, protein_to_strudel, protein_to_strudel_layered, default_strudel_code};
 use prodnb_audio::AudioEngine;
 use std::sync::Arc;
+use std::sync::mpsc;
 use std::time::{Duration, Instant};
 use anyhow::Result;
+use crate::llm::{LlmStreamMsg, stream_llm};
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum PlaybackState {
@@ -49,6 +51,11 @@ pub struct App {
 
     /// Help overlay shown when user presses /
     pub show_help_overlay: bool,
+
+    /// LLM streaming: receiver, buffer, error
+    pub llm_stream_receiver: Option<mpsc::Receiver<LlmStreamMsg>>,
+    pub llm_stream_buffer: String,
+    pub llm_stream_error: Option<String>,
 }
 
 impl App {
@@ -79,6 +86,47 @@ impl App {
             editor_output: String::new(),
             needs_audio_restart: false,
             show_help_overlay: false,
+            llm_stream_receiver: None,
+            llm_stream_buffer: String::new(),
+            llm_stream_error: None,
+        }
+    }
+
+    /// Returns true if LLM is currently streaming.
+    pub fn llm_streaming(&self) -> bool {
+        self.llm_stream_receiver.is_some()
+    }
+
+    /// Poll for new LLM stream chunks. Call each frame from main loop.
+    pub fn poll_llm_stream(&mut self) {
+        let Some(rx) = &self.llm_stream_receiver else { return };
+
+        loop {
+            match rx.try_recv() {
+                Ok(LlmStreamMsg::Chunk(s)) => {
+                    self.llm_stream_buffer.push_str(&s);
+                }
+                Ok(LlmStreamMsg::Done) => {
+                    self.llm_stream_receiver = None;
+                    let code = strip_strudel_markdown(std::mem::take(&mut self.llm_stream_buffer));
+                    for line in code.lines() {
+                        self.editor_lines.push(line.to_string());
+                    }
+                    self.editor_output = format!("LLM streamed {} chars into editor", code.len());
+                    break;
+                }
+                Ok(LlmStreamMsg::Error(e)) => {
+                    self.llm_stream_receiver = None;
+                    self.llm_stream_error = Some(e);
+                    self.editor_output = format!("LLM error: {}", self.llm_stream_error.as_ref().unwrap());
+                    break;
+                }
+                Err(mpsc::TryRecvError::Empty) => break,
+                Err(mpsc::TryRecvError::Disconnected) => {
+                    self.llm_stream_receiver = None;
+                    break;
+                }
+            }
         }
     }
 
@@ -316,14 +364,16 @@ impl App {
                 }
             }
             "llm" | "reorganize" => {
-                if let Some(ref p) = self.loaded_path {
+                if self.llm_stream_receiver.is_some() {
+                    "LLM already streaming...".into()
+                } else if let Some(ref p) = self.loaded_path {
                     match std::fs::read_to_string(p) {
-                        Ok(pdb_content) => match crate::llm::reorganize_with_llm(&pdb_content) {
-                            Ok(code) => {
-                                for line in code.lines() {
-                                    self.editor_lines.push(line.to_string());
-                                }
-                                format!("LLM inserted {} lines", code.lines().count())
+                        Ok(pdb_content) => match stream_llm(pdb_content) {
+                            Ok(rx) => {
+                                self.llm_stream_receiver = Some(rx);
+                                self.llm_stream_buffer.clear();
+                                self.llm_stream_error = None;
+                                "⟳ Streaming from Groq Compound...".into()
                             }
                             Err(e) => format!("LLM error: {}", e),
                         },
@@ -490,6 +540,23 @@ impl App {
 
     pub fn scope_samples(&self) -> Vec<f32> {
         Vec::new()
+    }
+}
+
+fn strip_strudel_markdown(content: String) -> String {
+    let content = content.trim();
+    if content.starts_with("```") {
+        content
+            .trim_start_matches("```")
+            .trim_start_matches("javascript")
+            .trim_start_matches("js")
+            .trim_start_matches("strudel")
+            .trim_start_matches('\n')
+            .trim_end_matches("```")
+            .trim()
+            .to_string()
+    } else {
+        content.to_string()
     }
 }
 

@@ -47,6 +47,11 @@ enum Commands {
         #[arg(short, long)]
         seed: Option<u64>,
     },
+    /// Test LLM API (Groq) with a PDB file
+    TestLlm {
+        /// PDB or mmCIF file to send to LLM
+        file: String,
+    },
 }
 
 fn main() -> Result<()> {
@@ -67,6 +72,7 @@ fn main() -> Result<()> {
     match cli.command {
         Some(Commands::Tui { file }) => run_tui(file),
         Some(Commands::Render { file, output, style, seed }) => run_render(file, output, style, seed),
+        Some(Commands::TestLlm { file }) => run_test_llm(file),
         None => run_tui(None),
     }
 }
@@ -155,6 +161,7 @@ fn run_tui(file_path: Option<String>) -> Result<()> {
                     }
                 }
             }
+            app.poll_llm_stream();
             app.update();
             last_tick = Instant::now();
         }
@@ -216,4 +223,30 @@ fn run_render(file_path: String, output_path: Option<String>, style_num: u8, see
 fn load_protein(path: &str) -> Result<Protein> {
     Protein::load_from_file(path)
         .with_context(|| format!("Failed to load protein from {}", path))
+}
+
+fn run_test_llm(file: String) -> Result<()> {
+    println!("Testing LLM API (Groq groq/compound)...");
+    println!("Loading {}...", file);
+
+    let pdb_content = std::fs::read_to_string(&file)
+        .with_context(|| format!("Failed to read {}", file))?;
+
+    println!("PDB size: {} bytes", pdb_content.len());
+    println!("Calling Groq API...");
+
+    match prodnb_tui::llm::reorganize_with_llm(&pdb_content) {
+        Ok(code) => {
+            println!("\n--- LLM response (Strudel code) ---\n");
+            println!("{}", code);
+            println!("\n--- end ---");
+            println!("\nOK: LLM API working ({} chars)", code.len());
+        }
+        Err(e) => {
+            eprintln!("Error: {}", e);
+            std::process::exit(1);
+        }
+    }
+
+    Ok(())
 }

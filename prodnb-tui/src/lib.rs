@@ -8,3 +8,4 @@ pub use app::{App, AppState, PlaybackState};
 pub use ui::draw_ui;
 pub use widgets::{Oscilloscope, Spectrum, Vectorscope};
 pub use input::{InputHandler, InputAction};
+pub use llm::{LlmStreamMsg, stream_llm};
