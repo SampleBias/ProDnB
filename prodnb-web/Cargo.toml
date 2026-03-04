@@ -1,0 +1,24 @@
+[package]
+name = "prodnb-web"
+version.workspace = true
+edition.workspace = true
+authors.workspace = true
+license.workspace = true
+
+[dependencies]
+prodnb-core = { path = "../prodnb-core" }
+actix-web = "4.4"
+actix-files = "0.6"
+actix-multipart = "0.6"
+serde = { workspace = true }
+serde_json = { workspace = true }
+tokio = { version = "1.35", features = ["full"] }
+anyhow = { workspace = true }
+askama = "0.12"
+futures = "0.3"
+env_logger = "0.11"
+log = { workspace = true }
+mime_guess = "2.0"
+dotenvy = { workspace = true }
+reqwest = { workspace = true }
+tempfile = "3.8"

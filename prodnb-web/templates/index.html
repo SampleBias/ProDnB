@@ -1,0 +1,86 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>{{ title }}</title>
+    <link rel="stylesheet" href="/static/css/style.css">
+</head>
+<body>
+    <div class="container">
+        <header>
+            <h1>🎵 ProDnB</h1>
+            <p class="subtitle">PDB Protein to Strudel Drum & Bass Converter</p>
+        </header>
+
+        <main>
+            <!-- Upload Section -->
+            <section class="upload-section">
+                <h2>Step 1: Upload PDB File</h2>
+                <div class="upload-area" id="uploadArea">
+                    <div class="upload-content">
+                        <svg class="upload-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor">
+                            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M7 16a4 4 0 01-.88-7.903A5 5 0 1115.9 6L16 6a5 5 0 011 9.9M15 13l-3-3m0 0l-3 3m3-3v12"/>
+                        </svg>
+                        <p class="upload-text">Drag & drop your PDB file here</p>
+                        <p class="upload-hint">or click to browse</p>
+                        <p class="upload-limit">Maximum file size: 10MB</p>
+                    </div>
+                    <input type="file" id="fileInput" accept=".pdb,.ent,.cif" hidden>
+                </div>
+                <div id="fileInfo" class="file-info hidden">
+                    <div class="file-info-content">
+                        <span class="file-name" id="fileName"></span>
+                        <button class="btn btn-remove" id="removeFile">✕</button>
+                    </div>
+                    <div class="file-stats" id="fileStats"></div>
+                </div>
+            </section>
+
+            <!-- Generate Section -->
+            <section class="generate-section">
+                <h2>Step 2: Generate Strudel Code</h2>
+                <button class="btn btn-primary" id="generateBtn" disabled>
+                    <span class="btn-text">Generate Strudel Code</span>
+                    <span class="btn-loading hidden">Generating...</span>
+                </button>
+                <p class="hint">This uses Groq's Compound AI model to create music from your protein structure</p>
+            </section>
+
+            <!-- Output Section -->
+            <section class="output-section">
+                <div class="section-header">
+                    <h2>Step 3: Copy to Strudel</h2>
+                    <button class="btn btn-copy" id="copyBtn" disabled>
+                        <svg class="copy-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor">
+                            <rect x="9" y="9" width="13" height="13" rx="2" ry="2"/>
+                            <path d="M5 15H4a2 2 0 01-2-2V4a2 2 0 012-2h9a2 2 0 012 2v1"/>
+                        </svg>
+                        <span>Copy Code</span>
+                    </button>
+                </div>
+                <div class="code-container">
+                    <pre><code id="strudelCode">// Your Strudel code will appear here...
+// Upload a PDB file and click "Generate" to start</code></pre>
+                </div>
+                <div class="output-actions">
+                    <a href="https://strudel.cc" target="_blank" class="btn btn-external">
+                        Open Strudel.cc ↗
+                    </a>
+                    <button class="btn btn-clear hidden" id="clearBtn">Clear</button>
+                </div>
+            </section>
+        </main>
+
+        <!-- Status Messages -->
+        <div id="statusMessage" class="status-message hidden"></div>
+
+        <footer>
+            <p>ProDnB uses protein structures to generate Drum & Bass patterns via Groq's Compound AI</p>
+            <p class="footer-note">Requires GROQ_API_KEY environment variable</p>
+        </footer>
+    </div>
+
+    <script src="/static/js/app.js"></script>
+</body>
+</html>

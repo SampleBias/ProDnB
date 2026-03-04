@@ -180,6 +180,10 @@ impl Protein {
         self.chains.iter().map(|c| c.residues.len()).sum()
     }
 
+    pub fn atom_count(&self) -> usize {
+        self.metadata.total_atoms
+    }
+
     pub fn all_atoms(&self) -> impl Iterator<Item = &Atom> {
         self.chains.iter()
             .flat_map(|chain| chain.residues.iter())

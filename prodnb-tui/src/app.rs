@@ -1,4 +1,4 @@
-use prodnb_core::{Protein, ProteinFeatures, ArrangementPlan, DnBParameters, Style, CompositionEngine, protein_to_strudel, protein_to_strudel_layered, default_strudel_code};
+use prodnb_core::{Protein, ProteinFeatures, ProteinFramework, ArrangementPlan, DnBParameters, Style, CompositionEngine, protein_to_strudel, protein_to_strudel_layered, default_strudel_code};
 use prodnb_audio::AudioEngine;
 use std::sync::Arc;
 use std::sync::mpsc;
@@ -52,14 +52,34 @@ pub struct App {
     /// Help overlay shown when user presses /
     pub show_help_overlay: bool,
 
-    /// LLM streaming: receiver, buffer, error
+    /// LLM streaming: receiver, buffer, error, last output (stays visible after done)
     pub llm_stream_receiver: Option<mpsc::Receiver<LlmStreamMsg>>,
     pub llm_stream_buffer: String,
     pub llm_stream_error: Option<String>,
+    pub llm_last_output: Option<String>,
 
     /// PDB path input (easy load) and focus
     pub pdb_path_input: String,
     pub focus_path_input: bool,
+
+    /// Background load: receiver for async feature extraction
+    pub load_receiver: Option<mpsc::Receiver<LoadResult>>,
+    pub load_in_progress: bool,
+
+    /// TUI: only redraw when state changed (reduces CPU)
+    pub needs_redraw: bool,
+}
+
+#[derive(Debug)]
+pub enum LoadResult {
+    Ok {
+        protein: Protein,
+        path: String,
+        features: ProteinFeatures,
+        arrangement: ArrangementPlan,
+        params: DnBParameters,
+    },
+    Err(String),
 }
 
 impl App {
@@ -93,30 +113,93 @@ impl App {
             llm_stream_receiver: None,
             llm_stream_buffer: String::new(),
             llm_stream_error: None,
+            llm_last_output: None,
             pdb_path_input: String::new(),
             focus_path_input: true,
+            load_receiver: None,
+            load_in_progress: false,
+            needs_redraw: true,
         }
     }
 
-    /// Load PDB from path input. Returns feedback message.
+    /// Start loading PDB in background (non-blocking). Reduces main-thread CPU.
+    pub fn load_protein_async(&mut self, path: String) {
+        if self.load_in_progress {
+            return;
+        }
+        let seed = self.seed;
+        let params = self.parameters.clone();
+        let (tx, rx) = mpsc::channel();
+        std::thread::spawn(move || {
+            let result = match prodnb_core::Protein::load_from_file(&path) {
+                Ok(protein) => {
+                    match prodnb_core::FeatureExtractor::extract(&protein) {
+                        Ok(features) => {
+                            let mut composer = CompositionEngine::new(seed);
+                            let params = composer.map_features_to_params(&features, &params);
+                            match composer.compose(&features, &params) {
+                                Ok(arrangement) => LoadResult::Ok {
+                                    protein,
+                                    path: path.clone(),
+                                    features,
+                                    arrangement,
+                                    params,
+                                },
+                                Err(e) => LoadResult::Err(format!("Compose: {}", e)),
+                            }
+                        }
+                        Err(e) => LoadResult::Err(format!("Features: {}", e)),
+                    }
+                }
+                Err(e) => LoadResult::Err(format!("Load: {}", e)),
+            };
+            let _ = tx.send(result);
+        });
+        self.load_receiver = Some(rx);
+        self.load_in_progress = true;
+        self.needs_redraw = true;
+    }
+
+    /// Poll for background load completion. Call each frame.
+    pub fn poll_load(&mut self) {
+        let Some(rx) = &self.load_receiver else { return };
+        match rx.try_recv() {
+            Ok(LoadResult::Ok { protein, path, features, arrangement, params }) => {
+                self.load_receiver = None;
+                self.load_in_progress = false;
+                self.protein = Some(protein);
+                self.loaded_path = Some(path);
+                self.features = Some(features);
+                self.arrangement = Some(arrangement);
+                self.parameters = params;
+                self.needs_audio_restart = true;
+                self.editor_output = "Loaded (background)".into();
+            }
+            Ok(LoadResult::Err(e)) => {
+                self.load_receiver = None;
+                self.load_in_progress = false;
+                self.editor_output = format!("Load failed: {}", e);
+            }
+            Err(mpsc::TryRecvError::Empty) => {}
+            Err(mpsc::TryRecvError::Disconnected) => {
+                self.load_receiver = None;
+                self.load_in_progress = false;
+            }
+        }
+        self.needs_redraw = true;
+    }
+
+    /// Load PDB from path input (background, non-blocking).
     pub fn load_from_path_input(&mut self) -> String {
         let path = self.pdb_path_input.trim().to_string();
         if path.is_empty() {
             return "Enter a path first".into();
         }
-        match prodnb_core::Protein::load_from_file(&path) {
-            Ok(protein) => {
-                if let Err(e) = self.load_protein(protein, path.clone()) {
-                    format!("Load failed: {}", e)
-                } else {
-                    format!("Loaded {}", path)
-                }
-            }
-            Err(e) => format!("Load failed: {}", e),
-        }
+        self.load_protein_async(path.clone());
+        format!("Loading {} (background)...", path)
     }
 
-    /// Submit loaded PDB to LLM. Returns feedback message.
+    /// Submit protein to LLM. Builds framework from loaded protein (or parses PDB if needed).
     pub fn submit_to_llm(&mut self) -> String {
         if self.llm_stream_receiver.is_some() {
             return "Already streaming...".into();
@@ -128,17 +211,28 @@ impl App {
                 if p.is_empty() { None } else { Some(p) }
             });
         if let Some(p) = path {
-            match std::fs::read_to_string(p) {
-                Ok(content) => match stream_llm(content) {
-                    Ok(rx) => {
-                        self.llm_stream_receiver = Some(rx);
-                        self.llm_stream_buffer.clear();
-                        self.llm_stream_error = None;
-                        "⟳ Submitting to Groq Compound...".into()
-                    }
-                    Err(e) => format!("Submit error: {}", e),
+            // Use loaded protein if available; else parse PDB synchronously
+            let protein = match &self.protein {
+                Some(prot) => prot.clone(),
+                None => match Protein::load_from_file(p) {
+                    Ok(prot) => prot,
+                    Err(e) => return format!("Parse failed: {}", e),
                 },
-                Err(e) => format!("Read failed: {}", e),
+            };
+            match ProteinFramework::from_protein(&protein) {
+                Ok(fw) => match fw.to_json() {
+                    Ok(json) => match stream_llm(json) {
+                        Ok(rx) => {
+                            self.llm_stream_receiver = Some(rx);
+                            self.llm_stream_buffer.clear();
+                            self.llm_stream_error = None;
+                            "⟳ Submitting framework to Groq Compound...".into()
+                        }
+                        Err(e) => format!("Submit error: {}", e),
+                    },
+                    Err(e) => format!("Framework JSON: {}", e),
+                },
+                Err(e) => format!("Framework build: {}", e),
             }
         } else {
             "Load a PDB file first".into()
@@ -158,27 +252,32 @@ impl App {
             match rx.try_recv() {
                 Ok(LlmStreamMsg::Chunk(s)) => {
                     self.llm_stream_buffer.push_str(&s);
+                    self.needs_redraw = true;
                 }
                 Ok(LlmStreamMsg::Done) => {
                     self.llm_stream_receiver = None;
-                    let mut full = std::mem::take(&mut self.llm_stream_buffer);
-                    // Remove status prefix like "Calling Groq Compound...\n"
-                    if let Some(idx) = full.find("setcps(") {
-                        full = full[idx..].to_string();
-                    } else if let Some(idx) = full.find("sound(") {
-                        full = full[idx..].to_string();
+                    let full = std::mem::take(&mut self.llm_stream_buffer);
+                    self.llm_last_output = Some(full.clone());
+                    self.needs_audio_restart = true; // Prefer Strudel playback when Space
+                    let mut code_source = full;
+                    if let Some(idx) = code_source.find("setcps(") {
+                        code_source = code_source[idx..].to_string();
+                    } else if let Some(idx) = code_source.find("sound(") {
+                        code_source = code_source[idx..].to_string();
                     }
-                    let code = strip_strudel_markdown(full);
+                    let code = strip_strudel_markdown(code_source);
                     for line in code.lines() {
                         self.editor_lines.push(line.to_string());
                     }
                     self.editor_output = format!("LLM: {} chars → editor", code.len());
+                    self.needs_redraw = true;
                     break;
                 }
                 Ok(LlmStreamMsg::Error(e)) => {
                     self.llm_stream_receiver = None;
                     self.llm_stream_error = Some(e);
                     self.editor_output = format!("LLM error: {}", self.llm_stream_error.as_ref().unwrap());
+                    self.needs_redraw = true;
                     break;
                 }
                 Err(mpsc::TryRecvError::Empty) => break,
@@ -426,21 +525,8 @@ impl App {
             "llm" | "reorganize" => {
                 if self.llm_stream_receiver.is_some() {
                     "LLM already streaming...".into()
-                } else if let Some(ref p) = self.loaded_path {
-                    match std::fs::read_to_string(p) {
-                        Ok(pdb_content) => match stream_llm(pdb_content) {
-                            Ok(rx) => {
-                                self.llm_stream_receiver = Some(rx);
-                                self.llm_stream_buffer.clear();
-                                self.llm_stream_error = None;
-                                "⟳ Streaming from Groq Compound...".into()
-                            }
-                            Err(e) => format!("LLM error: {}", e),
-                        },
-                        Err(e) => format!("Read failed: {}", e),
-                    }
                 } else {
-                    "Load a PDB first: load path/to/file.pdb".into()
+                    self.submit_to_llm()
                 }
             }
             "load" => {
@@ -448,16 +534,8 @@ impl App {
                 if path.is_empty() {
                     "Usage: load <path/to/file.pdb>".into()
                 } else {
-                    match Protein::load_from_file(&path) {
-                        Ok(protein) => {
-                            if let Err(e) = self.load_protein(protein, path.clone()) {
-                                format!("Load failed: {}", e)
-                            } else {
-                                format!("Loaded {}", path)
-                            }
-                        }
-                        Err(e) => format!("Load failed: {}", e),
-                    }
+                    self.load_protein_async(path.clone());
+                    format!("Loading {} (background)...", path)
                 }
             }
             _ => format!("Unknown: '{}'. Type 'help' for commands.", first),

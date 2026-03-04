@@ -118,13 +118,21 @@ fn run_tui(file_path: Option<String>) -> Result<()> {
 
     let mut last_tick = Instant::now();
     let tick_rate = Duration::from_millis(1000 / 60);
+    const IDLE_POLL_MS: u64 = 100;
 
     loop {
+        app.poll_llm_stream();
+        app.poll_load();
         terminal.draw(|f| draw_ui(f, &app))?;
 
-        let timeout = tick_rate
-            .checked_sub(last_tick.elapsed())
-            .unwrap_or_else(|| Duration::from_secs(0));
+        let busy = app.playback_state == prodnb_tui::PlaybackState::Playing
+            || app.llm_streaming()
+            || app.load_in_progress;
+        let timeout = if busy {
+            tick_rate.checked_sub(last_tick.elapsed()).unwrap_or(Duration::ZERO)
+        } else {
+            Duration::from_millis(IDLE_POLL_MS)
+        };
 
         if crossterm::event::poll(timeout)? {
             if let Event::Key(key) = event::read()? {
@@ -139,14 +147,24 @@ fn run_tui(file_path: Option<String>) -> Result<()> {
         if last_tick.elapsed() >= tick_rate {
             if app.needs_audio_restart {
                 app.needs_audio_restart = false;
-                if let Some(ref arr) = app.arrangement {
-                    match playback::PlaybackDriver::new(arr) {
-                        Ok(driver) => {
-                            app.set_audio_engine(driver.engine.clone());
-                            playback_driver = Some(driver);
-                        }
-                        Err(_) => {}
-                    }
+                // Prefer Strudel (LLM output) over arrangement when available
+                let created = if let Some(ref code) = app.llm_last_output {
+                    playback::PlaybackDriver::from_strudel(code)
+                        .map(|d| (d, true))
+                        .ok()
+                } else {
+                    None
+                };
+                let created = created.or_else(|| {
+                    app.arrangement.as_ref().and_then(|arr| {
+                        playback::PlaybackDriver::new(arr)
+                            .ok()
+                            .map(|d| (d, false))
+                    })
+                });
+                if let Some((driver, _)) = created {
+                    app.set_audio_engine(driver.engine.clone());
+                    playback_driver = Some(driver);
                 }
             }
             if let Some(ref driver) = playback_driver {
@@ -163,7 +181,6 @@ fn run_tui(file_path: Option<String>) -> Result<()> {
                     }
                 }
             }
-            app.poll_llm_stream();
             app.update();
             last_tick = Instant::now();
         }
@@ -231,13 +248,17 @@ fn run_test_llm(file: String) -> Result<()> {
     println!("Testing LLM API (Groq groq/compound)...");
     println!("Loading {}...", file);
 
-    let pdb_content = std::fs::read_to_string(&file)
-        .with_context(|| format!("Failed to read {}", file))?;
+    let protein = Protein::load_from_file(&file)
+        .with_context(|| format!("Failed to load protein from {}", file))?;
 
-    println!("PDB size: {} bytes", pdb_content.len());
+    let framework = prodnb_core::ProteinFramework::from_protein(&protein)
+        .with_context(|| "Failed to build framework")?;
+
+    let framework_json = framework.to_json()?;
+    println!("Framework size: {} bytes", framework_json.len());
     println!("Calling Groq API...");
 
-    match prodnb_tui::llm::reorganize_with_llm(&pdb_content) {
+    match prodnb_tui::llm::reorganize_with_llm(&framework_json) {
         Ok(code) => {
             println!("\n--- LLM response (Strudel code) ---\n");
             println!("{}", code);

@@ -68,6 +68,20 @@ fn flatten_midi_to_samples(arrangement: &ArrangementPlan) -> Vec<(u64, MidiEvent
     events
 }
 
+/// Convert Strudel code to (sample_offset, event) for playback.
+fn strudel_to_samples(code: &str) -> anyhow::Result<(u16, Vec<(u64, MidiEvent)>)> {
+    let (bpm, midi_events) = prodnb_midi::strudel_to_playback_events(code)?;
+    let samples_per_tick =
+        (SAMPLE_RATE as f64 * 60.0) / (bpm as f64 * TICKS_PER_BEAT as f64);
+
+    let events: Vec<(u64, MidiEvent)> = midi_events
+        .into_iter()
+        .map(|ev| ((ev.start_ticks as f64 * samples_per_tick) as u64, ev))
+        .collect();
+
+    Ok((bpm, events))
+}
+
 /// Shared state for audio callback (sample position for UI sync).
 #[derive(Default)]
 pub struct PlaybackState {
@@ -100,11 +114,21 @@ pub struct PlaybackDriver {
 
 impl PlaybackDriver {
     pub fn new(arrangement: &ArrangementPlan) -> Result<Self> {
+        let events = flatten_midi_to_samples(arrangement);
+        Self::new_from_events(arrangement.bpm, events)
+    }
+
+    /// Create playback from Strudel code (LLM output).
+    pub fn from_strudel(code: &str) -> Result<Self> {
+        let (bpm, events) = strudel_to_samples(code)?;
+        Self::new_from_events(bpm, events)
+    }
+
+    fn new_from_events(bpm: u16, events: Vec<(u64, MidiEvent)>) -> Result<Self> {
         let soundfont = resolve_soundfont()?;
         let engine = AudioEngine::new(soundfont.to_str().unwrap())
             .context("Failed to create audio engine")?;
 
-        let events = flatten_midi_to_samples(arrangement);
         let events = Arc::new(events);
         let state = Arc::new(PlaybackState::default());
         let engine = Arc::new(spin::Mutex::new(engine));
@@ -112,7 +136,6 @@ impl PlaybackDriver {
         let engine_cb = engine.clone();
         let events_cb = events.clone();
         let state_cb = state.clone();
-        let bpm = arrangement.bpm;
 
         let device = cpal::default_host()
             .default_output_device()

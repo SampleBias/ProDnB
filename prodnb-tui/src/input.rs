@@ -34,6 +34,7 @@ impl InputHandler {
     }
 
     fn handle_key_event(key: KeyEvent, app: &mut App) {
+        app.needs_redraw = true;
         let ctrl = key.modifiers.contains(KeyModifiers::CONTROL);
 
         // Global shortcuts (work even in editor)
@@ -47,6 +48,7 @@ impl InputHandler {
         }
         if ctrl && key.code == KeyCode::Char('l') {
             app.editor_output.clear();
+            app.llm_last_output = None;
             return;
         }
 

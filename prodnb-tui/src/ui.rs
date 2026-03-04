@@ -64,7 +64,9 @@ fn draw_control_bar(f: &mut Frame, app: &App, area: Rect) {
         Span::raw("")
     };
 
-    let load_btn = if app.focus_path_input {
+    let load_btn = if app.load_in_progress {
+        Span::styled(" [Loading…] ", ratatui::style::Style::default().fg(ratatui::style::Color::Yellow))
+    } else if app.focus_path_input {
         Span::styled("[Load]", ratatui::style::Style::default().fg(theme::STRING))
     } else {
         Span::styled(" Load ", ratatui::style::Style::default().fg(theme::COMMENT))
@@ -99,9 +101,11 @@ fn draw_control_bar(f: &mut Frame, app: &App, area: Rect) {
 
 fn draw_stream_output(f: &mut Frame, app: &App, area: Rect) {
     let title = if app.llm_streaming() {
-        " ⟳ LLM streaming (Groq Compound) "
+        " ⟳ LLM (Groq Compound) "
+    } else if app.llm_last_output.is_some() {
+        " Output "
     } else {
-        " Output (streams after Submit) "
+        " Output (Ctrl+S to Submit) "
     };
     let block = Block::default()
         .borders(Borders::ALL)
@@ -113,23 +117,27 @@ fn draw_stream_output(f: &mut Frame, app: &App, area: Rect) {
     let inner = block.inner(area);
     f.render_widget(block, area);
 
-    let text = if let Some(ref err) = app.llm_stream_error {
+    let text: Vec<Line> = if let Some(ref err) = app.llm_stream_error {
         vec![Line::from(Span::styled(err, ratatui::style::Style::default().fg(ratatui::style::Color::Red)))]
     } else if app.llm_streaming() {
         if app.llm_stream_buffer.is_empty() {
-            vec![Line::from(Span::styled("Waiting for response...", ratatui::style::Style::default().fg(theme::COMMENT)))]
+            vec![Line::from(Span::styled("Waiting for Groq Compound...", ratatui::style::Style::default().fg(theme::COMMENT)))]
         } else {
             app.llm_stream_buffer
                 .lines()
                 .map(|l| Line::from(Span::styled(l, ratatui::style::Style::default().fg(theme::STRING))))
-                .collect::<Vec<_>>()
+                .collect()
         }
+    } else if let Some(ref out) = app.llm_last_output {
+        out.lines()
+            .map(|l| Line::from(Span::styled(l, ratatui::style::Style::default().fg(theme::STRING))))
+            .collect()
     } else {
         vec![
-            Line::from(Span::styled("1. Type PDB path above, press Enter to Load", ratatui::style::Style::default().fg(theme::COMMENT))),
-            Line::from(Span::styled("2. Press Ctrl+S to Submit to Groq Compound", ratatui::style::Style::default().fg(theme::COMMENT))),
-            Line::from(Span::styled("3. Strudel code will stream here, then appear in editor", ratatui::style::Style::default().fg(theme::COMMENT))),
-            Line::from(Span::styled("4. Press Space to Start music", ratatui::style::Style::default().fg(theme::COMMENT))),
+            Line::from(Span::styled("1. Type PDB path above, Enter to Load", ratatui::style::Style::default().fg(theme::COMMENT))),
+            Line::from(Span::styled("2. Ctrl+S to Submit to Groq Compound", ratatui::style::Style::default().fg(theme::COMMENT))),
+            Line::from(Span::styled("3. Strudel code appears here", ratatui::style::Style::default().fg(theme::COMMENT))),
+            Line::from(Span::styled("4. Space to Start music", ratatui::style::Style::default().fg(theme::COMMENT))),
         ]
     };
 

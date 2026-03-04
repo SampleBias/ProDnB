@@ -7,10 +7,12 @@ use events::EventKind;
 pub mod tracks;
 pub mod patterns;
 pub mod events;
+pub mod strudel;
 
 pub use tracks::{MidiTrack, StemType};
 pub use patterns::{DrumPattern, BassPattern};
 pub use events::{MidiEvent, NoteEvent, ControlEvent};
+pub use strudel::{strudel_to_midi, strudel_to_playback_events};
 
 pub struct MidiBuilder {
     tracks: Vec<MidiTrack>,

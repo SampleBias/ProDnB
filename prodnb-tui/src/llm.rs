@@ -1,27 +1,32 @@
-//! LLM API integration for reorganizing PDB structure into Strudel code.
+//! LLM API integration for reorganizing protein framework into Strudel code.
 //!
 //! Uses Groq Cloud (Compound). Set GROQ_API_KEY in .env to enable.
+//! Framework is built from GPU-preprocessed (or CPU) protein data.
 
 use anyhow::Result;
 use serde_json::json;
 use std::sync::mpsc;
 
-const PROMPT: &str = r#"You are a music programmer. Convert this PDB protein structure into Strudel (strudel.cc) drum pattern code.
+const PROMPT: &str = r#"You are a Drum & Bass music programmer. Use this preprocessed protein framework to create appealing Strudel (strudel.cc) code.
 
-Mapping rules:
-- C (Carbon) atoms → "bd" (bass drum)
-- N (Nitrogen) atoms → "sd" (snare)
-- O (Oxygen) atoms → "hh" (hi-hat)
-- S (Sulfur) atoms → "cp" (clap)
-- P (Phosphorus) → "rim"
+Element → drum mapping (use as hints, not strict):
+- C (Carbon) → bd (bass drum)
+- N (Nitrogen) → sd (snare)
+- O (Oxygen) → hh (hi-hat)
+- S (Sulfur) → cp (clap)
+- P (Phosphorus) → rim
 
-Create a Drum & Bass style pattern. Use Strudel syntax:
-- setcps(bpm/60/4) for tempo
-- sound("pattern") for patterns
-- stack([...]) for layering
-- Use * for repetition, ~ for rest
+Strudel syntax (REQUIRED):
+- s("bd sd hh") or sound("bd sd hh") for patterns
+- setcps(0.7) for tempo (~174 BPM D&B)
+- stack(s("bd"), s("hh*8"), s("sd")) for layering
+- Mini-notation: ~ rest, * speed (e.g. hh*8 = 8 hi-hats per cycle), [] sub-sequences, , parallel
+- Drum sounds: bd, sd, hh, cp, rim, oh (open hat)
 
-Return ONLY the Strudel code, no markdown, no explanation. Use setcps around 0.7 for 174 BPM."#;
+Use rhythm_seed as structural inspiration. Use chain_lengths for polyrhythmic layers.
+Create something that sounds good: driving bass, crisp snares, tight hats. D&B energy.
+
+Return ONLY valid Strudel code. No markdown, no explanation."#;
 
 /// Stream event from LLM
 #[derive(Debug)]
@@ -33,7 +38,8 @@ pub enum LlmStreamMsg {
 
 /// Start LLM request in a background thread. Fetches from Groq and sends result to output area.
 /// Uses blocking API (Compound may not stream reliably). Code appears in output when done.
-pub fn stream_llm(pdb_content: String) -> Result<mpsc::Receiver<LlmStreamMsg>> {
+/// Takes framework JSON (from GPU/CPU preprocessing), not raw PDB.
+pub fn stream_llm(framework_json: String) -> Result<mpsc::Receiver<LlmStreamMsg>> {
     std::env::var("GROQ_API_KEY")
         .map_err(|_| anyhow::anyhow!("Set GROQ_API_KEY in .env to use LLM"))?;
 
@@ -41,7 +47,7 @@ pub fn stream_llm(pdb_content: String) -> Result<mpsc::Receiver<LlmStreamMsg>> {
 
     std::thread::spawn(move || {
         let _ = tx.send(LlmStreamMsg::Chunk("Calling Groq Compound...\n".into()));
-        match reorganize_with_llm(&pdb_content) {
+        match reorganize_with_llm(&framework_json) {
             Ok(code) => {
                 let _ = tx.send(LlmStreamMsg::Chunk(code));
             }
@@ -56,14 +62,14 @@ pub fn stream_llm(pdb_content: String) -> Result<mpsc::Receiver<LlmStreamMsg>> {
     Ok(rx)
 }
 
-/// Call Groq Cloud (Compound) to reorganize PDB content and return Strudel code (blocking).
-pub fn reorganize_with_llm(pdb_content: &str) -> Result<String> {
+/// Call Groq Cloud (Compound) to reorganize framework and return Strudel code (blocking).
+pub fn reorganize_with_llm(framework_json: &str) -> Result<String> {
     let api_key = std::env::var("GROQ_API_KEY")
         .map_err(|_| anyhow::anyhow!("Set GROQ_API_KEY in .env to use LLM (Groq Cloud)"))?;
 
     let user_content = format!(
-        "{}\n\nOutput ONLY valid Strudel code, no markdown or explanation.\n\nPDB content:\n{}",
-        PROMPT, pdb_content
+        "{}\n\nFramework (preprocessed protein data):\n{}\n\nOutput ONLY valid Strudel code.",
+        PROMPT, framework_json
     );
 
     // Compound can take 60–120s (tool use, reasoning). Use generous timeouts.

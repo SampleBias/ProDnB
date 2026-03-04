@@ -1,19 +1,24 @@
-    Updating crates.io index
-     Locking 1 package to latest compatible version
-      Adding dotenvy v0.15.7
-   2.009471503s  INFO prepare_target{force=false package_id=prodnb-audio v0.1.0 (/home/s4mpl3bi4s/ProDnB/prodnb-audio) target="prodnb_audio"}: cargo::core::compiler::fingerprint: stale: changed "/home/s4mpl3bi4s/ProDnB/prodnb-core/src/strudel.rs"
-   2.009485618s  INFO prepare_target{force=false package_id=prodnb-audio v0.1.0 (/home/s4mpl3bi4s/ProDnB/prodnb-audio) target="prodnb_audio"}: cargo::core::compiler::fingerprint:           (vs) "/home/s4mpl3bi4s/ProDnB/target/debug/.fingerprint/prodnb-core-122043ded0d9494a/dep-lib-prodnb_core"
-   2.009490109s  INFO prepare_target{force=false package_id=prodnb-audio v0.1.0 (/home/s4mpl3bi4s/ProDnB/prodnb-audio) target="prodnb_audio"}: cargo::core::compiler::fingerprint:                FileTime { seconds: 1772644545, nanos: 440295443 } < FileTime { seconds: 1772644612, nanos: 923848712 }
-   2.009975566s  INFO prepare_target{force=false package_id=prodnb-audio v0.1.0 (/home/s4mpl3bi4s/ProDnB/prodnb-audio) target="prodnb_audio"}: cargo::core::compiler::fingerprint: fingerprint dirty for prodnb-audio v0.1.0 (/home/s4mpl3bi4s/ProDnB/prodnb-audio)/Check { test: false }/TargetInner { name_inferred: true, ..: lib_target("prodnb_audio", ["lib"], "/home/s4mpl3bi4s/ProDnB/prodnb-audio/src/lib.rs", Edition2021) }
-   2.009989676s  INFO prepare_target{force=false package_id=prodnb-audio v0.1.0 (/home/s4mpl3bi4s/ProDnB/prodnb-audio) target="prodnb_audio"}: cargo::core::compiler::fingerprint:     dirty: FsStatusOutdated(StaleDepFingerprint { name: "prodnb_core" })
-   2.012286052s  INFO prepare_target{force=false package_id=prodnb-core v0.1.0 (/home/s4mpl3bi4s/ProDnB/prodnb-core) target="prodnb_core"}: cargo::core::compiler::fingerprint: fingerprint dirty for prodnb-core v0.1.0 (/home/s4mpl3bi4s/ProDnB/prodnb-core)/Check { test: false }/TargetInner { name_inferred: true, ..: lib_target("prodnb_core", ["lib"], "/home/s4mpl3bi4s/ProDnB/prodnb-core/src/lib.rs", Edition2021) }
-   2.012319592s  INFO prepare_target{force=false package_id=prodnb-core v0.1.0 (/home/s4mpl3bi4s/ProDnB/prodnb-core) target="prodnb_core"}: cargo::core::compiler::fingerprint:     dirty: FsStatusOutdated(StaleItem(ChangedFile { reference: "/home/s4mpl3bi4s/ProDnB/target/debug/.fingerprint/prodnb-core-122043ded0d9494a/dep-lib-prodnb_core", reference_mtime: FileTime { seconds: 1772644545, nanos: 440295443 }, stale: "/home/s4mpl3bi4s/ProDnB/prodnb-core/src/strudel.rs", stale_mtime: FileTime { seconds: 1772644612, nanos: 923848712 } }))
-   2.016833328s  INFO prepare_target{force=false package_id=prodnb-midi v0.1.0 (/home/s4mpl3bi4s/ProDnB/prodnb-midi) target="prodnb_midi"}: cargo::core::compiler::fingerprint: fingerprint dirty for prodnb-midi v0.1.0 (/home/s4mpl3bi4s/ProDnB/prodnb-midi)/Check { test: false }/TargetInner { name_inferred: true, ..: lib_target("prodnb_midi", ["lib"], "/home/s4mpl3bi4s/ProDnB/prodnb-midi/src/lib.rs", Edition2021) }
-   2.016861699s  INFO prepare_target{force=false package_id=prodnb-midi v0.1.0 (/home/s4mpl3bi4s/ProDnB/prodnb-midi) target="prodnb_midi"}: cargo::core::compiler::fingerprint:     dirty: FsStatusOutdated(StaleDepFingerprint { name: "prodnb_core" })
-   2.019484663s  INFO prepare_target{force=false package_id=prodnb-audio v0.1.0 (/home/s4mpl3bi4s/ProDnB/prodnb-audio) target="prodnb_audio"}: cargo::core::compiler::fingerprint: fingerprint dirty for prodnb-audio v0.1.0 (/home/s4mpl3bi4s/ProDnB/prodnb-audio)/Check { test: true }/TargetInner { name_inferred: true, ..: lib_target("prodnb_audio", ["lib"], "/home/s4mpl3bi4s/ProDnB/prodnb-audio/src/lib.rs", Edition2021) }
-   2.019539078s  INFO prepare_target{force=false package_id=prodnb-audio v0.1.0 (/home/s4mpl3bi4s/ProDnB/prodnb-audio) target="prodnb_audio"}: cargo::core::compiler::fingerprint:     dirty: FsStatusOutdated(StaleDepFingerprint { name: "prodnb_core" })
-   2.027475842s  INFO prepare_target{force=false package_id=prodnb-cli v0.1.0 (/home/s4mpl3bi4s/ProDnB/prodnb-cli) target="prodnb"}: cargo::core::compiler::fingerprint: fingerprint error for prodnb-cli v0.1.0 (/home/s4mpl3bi4s/ProDnB/prodnb-cli)/Check { test: false }/TargetInner { name: "prodnb", doc: true, ..: with_path("/home/s4mpl3bi4s/ProDnB/prodnb-cli/src/main.rs", Edition2021) }
-   2.027496445s  INFO prepare_target{force=false package_id=prodnb-cli v0.1.0 (/home/s4mpl3bi4s/ProDnB/prodnb-cli) target="prodnb"}: cargo::core::compiler::fingerprint:     err: failed to read `/home/s4mpl3bi4s/ProDnB/target/debug/.fingerprint/prodnb-cli-f7ecb1e818fcc1d8/bin-prodnb`
+   0.257742353s  INFO prepare_target{force=false package_id=prodnb-audio v0.1.0 (/home/s4mpl3bi4s/ProDnB/prodnb-audio) target="prodnb_audio"}: cargo::core::compiler::fingerprint: stale: changed "/home/s4mpl3bi4s/ProDnB/prodnb-core/src/protein.rs"
+   0.257754437s  INFO prepare_target{force=false package_id=prodnb-audio v0.1.0 (/home/s4mpl3bi4s/ProDnB/prodnb-audio) target="prodnb_audio"}: cargo::core::compiler::fingerprint:           (vs) "/home/s4mpl3bi4s/ProDnB/target/debug/.fingerprint/prodnb-core-38814ddac9f3e6f7/dep-lib-prodnb_core"
+   0.257759212s  INFO prepare_target{force=false package_id=prodnb-audio v0.1.0 (/home/s4mpl3bi4s/ProDnB/prodnb-audio) target="prodnb_audio"}: cargo::core::compiler::fingerprint:                FileTime { seconds: 1772650680, nanos: 315377186 } < FileTime { seconds: 1772650682, nanos: 567418472 }
+   0.257981282s  INFO prepare_target{force=false package_id=prodnb-audio v0.1.0 (/home/s4mpl3bi4s/ProDnB/prodnb-audio) target="prodnb_audio"}: cargo::core::compiler::fingerprint: fingerprint dirty for prodnb-audio v0.1.0 (/home/s4mpl3bi4s/ProDnB/prodnb-audio)/Check { test: false }/TargetInner { name_inferred: true, ..: lib_target("prodnb_audio", ["lib"], "/home/s4mpl3bi4s/ProDnB/prodnb-audio/src/lib.rs", Edition2021) }
+   0.257998041s  INFO prepare_target{force=false package_id=prodnb-audio v0.1.0 (/home/s4mpl3bi4s/ProDnB/prodnb-audio) target="prodnb_audio"}: cargo::core::compiler::fingerprint:     dirty: FsStatusOutdated(StaleDepFingerprint { name: "prodnb_core" })
+   0.259245687s  INFO prepare_target{force=false package_id=prodnb-core v0.1.0 (/home/s4mpl3bi4s/ProDnB/prodnb-core) target="prodnb_core"}: cargo::core::compiler::fingerprint: fingerprint dirty for prodnb-core v0.1.0 (/home/s4mpl3bi4s/ProDnB/prodnb-core)/Check { test: false }/TargetInner { name_inferred: true, ..: lib_target("prodnb_core", ["lib"], "/home/s4mpl3bi4s/ProDnB/prodnb-core/src/lib.rs", Edition2021) }
+   0.259255936s  INFO prepare_target{force=false package_id=prodnb-core v0.1.0 (/home/s4mpl3bi4s/ProDnB/prodnb-core) target="prodnb_core"}: cargo::core::compiler::fingerprint:     dirty: FsStatusOutdated(StaleItem(ChangedFile { reference: "/home/s4mpl3bi4s/ProDnB/target/debug/.fingerprint/prodnb-core-38814ddac9f3e6f7/dep-lib-prodnb_core", reference_mtime: FileTime { seconds: 1772650680, nanos: 315377186 }, stale: "/home/s4mpl3bi4s/ProDnB/prodnb-core/src/protein.rs", stale_mtime: FileTime { seconds: 1772650682, nanos: 567418472 } }))
+   0.262425546s  INFO prepare_target{force=false package_id=prodnb-midi v0.1.0 (/home/s4mpl3bi4s/ProDnB/prodnb-midi) target="prodnb_midi"}: cargo::core::compiler::fingerprint: fingerprint dirty for prodnb-midi v0.1.0 (/home/s4mpl3bi4s/ProDnB/prodnb-midi)/Check { test: false }/TargetInner { name_inferred: true, ..: lib_target("prodnb_midi", ["lib"], "/home/s4mpl3bi4s/ProDnB/prodnb-midi/src/lib.rs", Edition2021) }
+   0.262434954s  INFO prepare_target{force=false package_id=prodnb-midi v0.1.0 (/home/s4mpl3bi4s/ProDnB/prodnb-midi) target="prodnb_midi"}: cargo::core::compiler::fingerprint:     dirty: FsStatusOutdated(StaleDepFingerprint { name: "prodnb_core" })
+   0.263086592s  INFO prepare_target{force=false package_id=prodnb-audio v0.1.0 (/home/s4mpl3bi4s/ProDnB/prodnb-audio) target="prodnb_audio"}: cargo::core::compiler::fingerprint: fingerprint dirty for prodnb-audio v0.1.0 (/home/s4mpl3bi4s/ProDnB/prodnb-audio)/Check { test: true }/TargetInner { name_inferred: true, ..: lib_target("prodnb_audio", ["lib"], "/home/s4mpl3bi4s/ProDnB/prodnb-audio/src/lib.rs", Edition2021) }
+   0.263095940s  INFO prepare_target{force=false package_id=prodnb-audio v0.1.0 (/home/s4mpl3bi4s/ProDnB/prodnb-audio) target="prodnb_audio"}: cargo::core::compiler::fingerprint:     dirty: FsStatusOutdated(StaleDepFingerprint { name: "prodnb_core" })
+   0.266972597s  INFO prepare_target{force=false package_id=prodnb-cli v0.1.0 (/home/s4mpl3bi4s/ProDnB/prodnb-cli) target="prodnb"}: cargo::core::compiler::fingerprint: fingerprint dirty for prodnb-cli v0.1.0 (/home/s4mpl3bi4s/ProDnB/prodnb-cli)/Check { test: false }/TargetInner { name: "prodnb", doc: true, ..: with_path("/home/s4mpl3bi4s/ProDnB/prodnb-cli/src/main.rs", Edition2021) }
+   0.266982328s  INFO prepare_target{force=false package_id=prodnb-cli v0.1.0 (/home/s4mpl3bi4s/ProDnB/prodnb-cli) target="prodnb"}: cargo::core::compiler::fingerprint:     dirty: FsStatusOutdated(StaleDepFingerprint { name: "prodnb_core" })
+   0.269000017s  INFO prepare_target{force=false package_id=prodnb-tui v0.1.0 (/home/s4mpl3bi4s/ProDnB/prodnb-tui) target="prodnb_tui"}: cargo::core::compiler::fingerprint: fingerprint dirty for prodnb-tui v0.1.0 (/home/s4mpl3bi4s/ProDnB/prodnb-tui)/Check { test: false }/TargetInner { name_inferred: true, ..: lib_target("prodnb_tui", ["lib"], "/home/s4mpl3bi4s/ProDnB/prodnb-tui/src/lib.rs", Edition2021) }
+   0.269010092s  INFO prepare_target{force=false package_id=prodnb-tui v0.1.0 (/home/s4mpl3bi4s/ProDnB/prodnb-tui) target="prodnb_tui"}: cargo::core::compiler::fingerprint:     dirty: FsStatusOutdated(StaleDepFingerprint { name: "prodnb_core" })
+   0.274943833s  INFO prepare_target{force=false package_id=prodnb-cli v0.1.0 (/home/s4mpl3bi4s/ProDnB/prodnb-cli) target="prodnb"}: cargo::core::compiler::fingerprint: fingerprint dirty for prodnb-cli v0.1.0 (/home/s4mpl3bi4s/ProDnB/prodnb-cli)/Check { test: true }/TargetInner { name: "prodnb", doc: true, ..: with_path("/home/s4mpl3bi4s/ProDnB/prodnb-cli/src/main.rs", Edition2021) }
+   0.274954742s  INFO prepare_target{force=false package_id=prodnb-cli v0.1.0 (/home/s4mpl3bi4s/ProDnB/prodnb-cli) target="prodnb"}: cargo::core::compiler::fingerprint:     dirty: FsStatusOutdated(StaleDepFingerprint { name: "prodnb_core" })
+   0.275878161s  INFO prepare_target{force=false package_id=prodnb-cli v0.1.0 (/home/s4mpl3bi4s/ProDnB/prodnb-cli) target="integration_test"}: cargo::core::compiler::fingerprint: fingerprint dirty for prodnb-cli v0.1.0 (/home/s4mpl3bi4s/ProDnB/prodnb-cli)/Check { test: false }/TargetInner { kind: "example", name: "integration_test", tested: false, benched: false, ..: with_path("/home/s4mpl3bi4s/ProDnB/prodnb-cli/examples/integration_test.rs", Edition2021) }
+   0.275887797s  INFO prepare_target{force=false package_id=prodnb-cli v0.1.0 (/home/s4mpl3bi4s/ProDnB/prodnb-cli) target="integration_test"}: cargo::core::compiler::fingerprint:     dirty: FsStatusOutdated(StaleDepFingerprint { name: "prodnb_core" })
+   0.276714163s  INFO prepare_target{force=false package_id=prodnb-core v0.1.0 (/home/s4mpl3bi4s/ProDnB/prodnb-core) target="integration_test"}: cargo::core::compiler::fingerprint: fingerprint error for prodnb-core v0.1.0 (/home/s4mpl3bi4s/ProDnB/prodnb-core)/Check { test: false }/TargetInner { kind: "example", name: "integration_test", tested: false, benched: false, ..: with_path("/home/s4mpl3bi4s/ProDnB/prodnb-core/examples/integration_test.rs", Edition2021) }
+   0.276723601s  INFO prepare_target{force=false package_id=prodnb-core v0.1.0 (/home/s4mpl3bi4s/ProDnB/prodnb-core) target="integration_test"}: cargo::core::compiler::fingerprint:     err: failed to read `/home/s4mpl3bi4s/ProDnB/target/debug/.fingerprint/prodnb-core-d85aa5ff1339be65/example-integration_test`
 
 Caused by:
     No such file or directory (os error 2)
@@ -55,54 +60,14 @@ Stack backtrace:
   24: <unknown>
   25: __libc_start_main
   26: <unknown>
-   2.038335829s  INFO prepare_target{force=false package_id=dotenvy v0.15.7 target="dotenvy"}: cargo::core::compiler::fingerprint: fingerprint error for dotenvy v0.15.7/Check { test: false }/TargetInner { name_inferred: true, ..: lib_target("dotenvy", ["lib"], "/home/s4mpl3bi4s/.cargo/registry/src/index.crates.io-1949cf8c6b5b557f/dotenvy-0.15.7/src/lib.rs", Edition2018) }
-   2.038368222s  INFO prepare_target{force=false package_id=dotenvy v0.15.7 target="dotenvy"}: cargo::core::compiler::fingerprint:     err: failed to read `/home/s4mpl3bi4s/ProDnB/target/debug/.fingerprint/dotenvy-d82f480ef34da218/lib-dotenvy`
-
-Caused by:
-    No such file or directory (os error 2)
-
-Stack backtrace:
-   0: cargo_util::paths::read_bytes
-   1: cargo_util::paths::read
-   2: cargo::core::compiler::fingerprint::_compare_old_fingerprint
-   3: cargo::core::compiler::fingerprint::prepare_target
-   4: cargo::core::compiler::compile
-   5: cargo::core::compiler::compile
-   6: <cargo::core::compiler::build_runner::BuildRunner>::compile
-   7: cargo::ops::cargo_compile::compile_ws
-   8: cargo::ops::cargo_compile::compile_with_exec
-   9: cargo::ops::cargo_compile::compile
-  10: cargo::commands::check::exec
-  11: <cargo::cli::Exec>::exec
-  12: cargo::main
-  13: std::sys::backtrace::__rust_begin_short_backtrace::<fn(), ()>
-  14: std::rt::lang_start::<()>::{closure#0}
-  15: core::ops::function::impls::<impl core::ops::function::FnOnce<A> for &F>::call_once
-             at /rustc/01f6ddf7588f42ae2d7eb0a2f21d44e8e96674cf/library/core/src/ops/function.rs:287:21
-  16: std::panicking::catch_unwind::do_call
-             at /rustc/01f6ddf7588f42ae2d7eb0a2f21d44e8e96674cf/library/std/src/panicking.rs:581:40
-  17: std::panicking::catch_unwind
-             at /rustc/01f6ddf7588f42ae2d7eb0a2f21d44e8e96674cf/library/std/src/panicking.rs:544:19
-  18: std::panic::catch_unwind
-             at /rustc/01f6ddf7588f42ae2d7eb0a2f21d44e8e96674cf/library/std/src/panic.rs:359:14
-  19: std::rt::lang_start_internal::{{closure}}
-             at /rustc/01f6ddf7588f42ae2d7eb0a2f21d44e8e96674cf/library/std/src/rt.rs:175:24
-  20: std::panicking::catch_unwind::do_call
-             at /rustc/01f6ddf7588f42ae2d7eb0a2f21d44e8e96674cf/library/std/src/panicking.rs:581:40
-  21: std::panicking::catch_unwind
-             at /rustc/01f6ddf7588f42ae2d7eb0a2f21d44e8e96674cf/library/std/src/panicking.rs:544:19
-  22: std::panic::catch_unwind
-             at /rustc/01f6ddf7588f42ae2d7eb0a2f21d44e8e96674cf/library/std/src/panic.rs:359:14
-  23: std::rt::lang_start_internal
-             at /rustc/01f6ddf7588f42ae2d7eb0a2f21d44e8e96674cf/library/std/src/rt.rs:171:5
-  24: main
-  25: <unknown>
-  26: __libc_start_main
-  27: <unknown>
-   2.039033478s  INFO prepare_target{force=false package_id=prodnb-tui v0.1.0 (/home/s4mpl3bi4s/ProDnB/prodnb-tui) target="prodnb_tui"}: cargo::core::compiler::fingerprint: fingerprint dirty for prodnb-tui v0.1.0 (/home/s4mpl3bi4s/ProDnB/prodnb-tui)/Check { test: false }/TargetInner { name_inferred: true, ..: lib_target("prodnb_tui", ["lib"], "/home/s4mpl3bi4s/ProDnB/prodnb-tui/src/lib.rs", Edition2021) }
-   2.039060867s  INFO prepare_target{force=false package_id=prodnb-tui v0.1.0 (/home/s4mpl3bi4s/ProDnB/prodnb-tui) target="prodnb_tui"}: cargo::core::compiler::fingerprint:     dirty: FsStatusOutdated(StaleDepFingerprint { name: "prodnb_core" })
-   2.044900586s  INFO prepare_target{force=false package_id=prodnb-cli v0.1.0 (/home/s4mpl3bi4s/ProDnB/prodnb-cli) target="prodnb"}: cargo::core::compiler::fingerprint: fingerprint error for prodnb-cli v0.1.0 (/home/s4mpl3bi4s/ProDnB/prodnb-cli)/Check { test: true }/TargetInner { name: "prodnb", doc: true, ..: with_path("/home/s4mpl3bi4s/ProDnB/prodnb-cli/src/main.rs", Edition2021) }
-   2.044914248s  INFO prepare_target{force=false package_id=prodnb-cli v0.1.0 (/home/s4mpl3bi4s/ProDnB/prodnb-cli) target="prodnb"}: cargo::core::compiler::fingerprint:     err: failed to read `/home/s4mpl3bi4s/ProDnB/target/debug/.fingerprint/prodnb-cli-a7cc03951610bf8a/test-bin-prodnb`
+   0.283766983s  INFO prepare_target{force=false package_id=prodnb-core v0.1.0 (/home/s4mpl3bi4s/ProDnB/prodnb-core) target="test_parser"}: cargo::core::compiler::fingerprint: fingerprint dirty for prodnb-core v0.1.0 (/home/s4mpl3bi4s/ProDnB/prodnb-core)/Check { test: false }/TargetInner { kind: "example", name: "test_parser", tested: false, benched: false, ..: with_path("/home/s4mpl3bi4s/ProDnB/prodnb-core/examples/test_parser.rs", Edition2021) }
+   0.283789510s  INFO prepare_target{force=false package_id=prodnb-core v0.1.0 (/home/s4mpl3bi4s/ProDnB/prodnb-core) target="test_parser"}: cargo::core::compiler::fingerprint:     dirty: FsStatusOutdated(StaleDepFingerprint { name: "prodnb_core" })
+   0.284280371s  INFO prepare_target{force=false package_id=prodnb-midi v0.1.0 (/home/s4mpl3bi4s/ProDnB/prodnb-midi) target="prodnb_midi"}: cargo::core::compiler::fingerprint: fingerprint dirty for prodnb-midi v0.1.0 (/home/s4mpl3bi4s/ProDnB/prodnb-midi)/Check { test: true }/TargetInner { name_inferred: true, ..: lib_target("prodnb_midi", ["lib"], "/home/s4mpl3bi4s/ProDnB/prodnb-midi/src/lib.rs", Edition2021) }
+   0.284289744s  INFO prepare_target{force=false package_id=prodnb-midi v0.1.0 (/home/s4mpl3bi4s/ProDnB/prodnb-midi) target="prodnb_midi"}: cargo::core::compiler::fingerprint:     dirty: FsStatusOutdated(StaleDepFingerprint { name: "prodnb_core" })
+   0.284849574s  INFO prepare_target{force=false package_id=prodnb-tui v0.1.0 (/home/s4mpl3bi4s/ProDnB/prodnb-tui) target="prodnb_tui"}: cargo::core::compiler::fingerprint: fingerprint dirty for prodnb-tui v0.1.0 (/home/s4mpl3bi4s/ProDnB/prodnb-tui)/Check { test: true }/TargetInner { name_inferred: true, ..: lib_target("prodnb_tui", ["lib"], "/home/s4mpl3bi4s/ProDnB/prodnb-tui/src/lib.rs", Edition2021) }
+   0.284858674s  INFO prepare_target{force=false package_id=prodnb-tui v0.1.0 (/home/s4mpl3bi4s/ProDnB/prodnb-tui) target="prodnb_tui"}: cargo::core::compiler::fingerprint:     dirty: FsStatusOutdated(StaleDepFingerprint { name: "prodnb_core" })
+   0.288460314s  INFO prepare_target{force=false package_id=prodnb-web v0.1.0 (/home/s4mpl3bi4s/ProDnB/prodnb-web) target="prodnb_web"}: cargo::core::compiler::fingerprint: fingerprint error for prodnb-web v0.1.0 (/home/s4mpl3bi4s/ProDnB/prodnb-web)/Check { test: false }/TargetInner { name_inferred: true, ..: lib_target("prodnb_web", ["lib"], "/home/s4mpl3bi4s/ProDnB/prodnb-web/src/lib.rs", Edition2021) }
+   0.288470434s  INFO prepare_target{force=false package_id=prodnb-web v0.1.0 (/home/s4mpl3bi4s/ProDnB/prodnb-web) target="prodnb_web"}: cargo::core::compiler::fingerprint:     err: failed to read `/home/s4mpl3bi4s/ProDnB/target/debug/.fingerprint/prodnb-web-53ba9a65ce625643/lib-prodnb_web`
 
 Caused by:
     No such file or directory (os error 2)
@@ -144,8 +109,8 @@ Stack backtrace:
   24: <unknown>
   25: __libc_start_main
   26: <unknown>
-   2.045698768s  INFO prepare_target{force=false package_id=prodnb-cli v0.1.0 (/home/s4mpl3bi4s/ProDnB/prodnb-cli) target="integration_test"}: cargo::core::compiler::fingerprint: fingerprint error for prodnb-cli v0.1.0 (/home/s4mpl3bi4s/ProDnB/prodnb-cli)/Check { test: false }/TargetInner { kind: "example", name: "integration_test", tested: false, benched: false, ..: with_path("/home/s4mpl3bi4s/ProDnB/prodnb-cli/examples/integration_test.rs", Edition2021) }
-   2.045708522s  INFO prepare_target{force=false package_id=prodnb-cli v0.1.0 (/home/s4mpl3bi4s/ProDnB/prodnb-cli) target="integration_test"}: cargo::core::compiler::fingerprint:     err: failed to read `/home/s4mpl3bi4s/ProDnB/target/debug/.fingerprint/prodnb-cli-6baca1ecb8d0fba0/example-integration_test`
+   0.294818252s  INFO prepare_target{force=false package_id=prodnb-web v0.1.0 (/home/s4mpl3bi4s/ProDnB/prodnb-web) target="prodnb_web"}: cargo::core::compiler::fingerprint: fingerprint error for prodnb-web v0.1.0 (/home/s4mpl3bi4s/ProDnB/prodnb-web)/Check { test: true }/TargetInner { name_inferred: true, ..: lib_target("prodnb_web", ["lib"], "/home/s4mpl3bi4s/ProDnB/prodnb-web/src/lib.rs", Edition2021) }
+   0.294862526s  INFO prepare_target{force=false package_id=prodnb-web v0.1.0 (/home/s4mpl3bi4s/ProDnB/prodnb-web) target="prodnb_web"}: cargo::core::compiler::fingerprint:     err: failed to read `/home/s4mpl3bi4s/ProDnB/target/debug/.fingerprint/prodnb-web-2588e57ee9bf0f80/test-lib-prodnb_web`
 
 Caused by:
     No such file or directory (os error 2)
@@ -187,13 +152,8 @@ Stack backtrace:
   24: <unknown>
   25: __libc_start_main
   26: <unknown>
-   2.046931723s  INFO prepare_target{force=false package_id=prodnb-core v0.1.0 (/home/s4mpl3bi4s/ProDnB/prodnb-core) target="prodnb_core"}: cargo::core::compiler::fingerprint: stale: changed "/home/s4mpl3bi4s/ProDnB/prodnb-core/src/strudel.rs"
-   2.046944356s  INFO prepare_target{force=false package_id=prodnb-core v0.1.0 (/home/s4mpl3bi4s/ProDnB/prodnb-core) target="prodnb_core"}: cargo::core::compiler::fingerprint:           (vs) "/home/s4mpl3bi4s/ProDnB/target/debug/.fingerprint/prodnb-core-37443beb0f6f8b6a/dep-test-lib-prodnb_core"
-   2.046947931s  INFO prepare_target{force=false package_id=prodnb-core v0.1.0 (/home/s4mpl3bi4s/ProDnB/prodnb-core) target="prodnb_core"}: cargo::core::compiler::fingerprint:                FileTime { seconds: 1772644553, nanos: 269283798 } < FileTime { seconds: 1772644612, nanos: 923848712 }
-   2.047049180s  INFO prepare_target{force=false package_id=prodnb-core v0.1.0 (/home/s4mpl3bi4s/ProDnB/prodnb-core) target="prodnb_core"}: cargo::core::compiler::fingerprint: fingerprint dirty for prodnb-core v0.1.0 (/home/s4mpl3bi4s/ProDnB/prodnb-core)/Check { test: true }/TargetInner { name_inferred: true, ..: lib_target("prodnb_core", ["lib"], "/home/s4mpl3bi4s/ProDnB/prodnb-core/src/lib.rs", Edition2021) }
-   2.047065667s  INFO prepare_target{force=false package_id=prodnb-core v0.1.0 (/home/s4mpl3bi4s/ProDnB/prodnb-core) target="prodnb_core"}: cargo::core::compiler::fingerprint:     dirty: FsStatusOutdated(StaleItem(ChangedFile { reference: "/home/s4mpl3bi4s/ProDnB/target/debug/.fingerprint/prodnb-core-37443beb0f6f8b6a/dep-test-lib-prodnb_core", reference_mtime: FileTime { seconds: 1772644553, nanos: 269283798 }, stale: "/home/s4mpl3bi4s/ProDnB/prodnb-core/src/strudel.rs", stale_mtime: FileTime { seconds: 1772644612, nanos: 923848712 } }))
-   2.048036503s  INFO prepare_target{force=false package_id=prodnb-core v0.1.0 (/home/s4mpl3bi4s/ProDnB/prodnb-core) target="integration_test"}: cargo::core::compiler::fingerprint: fingerprint error for prodnb-core v0.1.0 (/home/s4mpl3bi4s/ProDnB/prodnb-core)/Check { test: false }/TargetInner { kind: "example", name: "integration_test", tested: false, benched: false, ..: with_path("/home/s4mpl3bi4s/ProDnB/prodnb-core/examples/integration_test.rs", Edition2021) }
-   2.048078514s  INFO prepare_target{force=false package_id=prodnb-core v0.1.0 (/home/s4mpl3bi4s/ProDnB/prodnb-core) target="integration_test"}: cargo::core::compiler::fingerprint:     err: failed to read `/home/s4mpl3bi4s/ProDnB/target/debug/.fingerprint/prodnb-core-4253f7e6c022a38c/example-integration_test`
+   0.296252171s  INFO prepare_target{force=false package_id=prodnb-web v0.1.0 (/home/s4mpl3bi4s/ProDnB/prodnb-web) target="prodnb-web"}: cargo::core::compiler::fingerprint: fingerprint error for prodnb-web v0.1.0 (/home/s4mpl3bi4s/ProDnB/prodnb-web)/Check { test: false }/TargetInner { name: "prodnb-web", doc: true, ..: with_path("/home/s4mpl3bi4s/ProDnB/prodnb-web/src/main.rs", Edition2021) }
+   0.296265451s  INFO prepare_target{force=false package_id=prodnb-web v0.1.0 (/home/s4mpl3bi4s/ProDnB/prodnb-web) target="prodnb-web"}: cargo::core::compiler::fingerprint:     err: failed to read `/home/s4mpl3bi4s/ProDnB/target/debug/.fingerprint/prodnb-web-34c8988d047e1618/bin-prodnb-web`
 
 Caused by:
     No such file or directory (os error 2)
@@ -235,17 +195,56 @@ Stack backtrace:
   24: <unknown>
   25: __libc_start_main
   26: <unknown>
-   2.048990486s  INFO prepare_target{force=false package_id=prodnb-core v0.1.0 (/home/s4mpl3bi4s/ProDnB/prodnb-core) target="test_parser"}: cargo::core::compiler::fingerprint: fingerprint dirty for prodnb-core v0.1.0 (/home/s4mpl3bi4s/ProDnB/prodnb-core)/Check { test: false }/TargetInner { kind: "example", name: "test_parser", tested: false, benched: false, ..: with_path("/home/s4mpl3bi4s/ProDnB/prodnb-core/examples/test_parser.rs", Edition2021) }
-   2.049003430s  INFO prepare_target{force=false package_id=prodnb-core v0.1.0 (/home/s4mpl3bi4s/ProDnB/prodnb-core) target="test_parser"}: cargo::core::compiler::fingerprint:     dirty: FsStatusOutdated(StaleDepFingerprint { name: "prodnb_core" })
-   2.049355335s  INFO prepare_target{force=false package_id=prodnb-midi v0.1.0 (/home/s4mpl3bi4s/ProDnB/prodnb-midi) target="prodnb_midi"}: cargo::core::compiler::fingerprint: fingerprint dirty for prodnb-midi v0.1.0 (/home/s4mpl3bi4s/ProDnB/prodnb-midi)/Check { test: true }/TargetInner { name_inferred: true, ..: lib_target("prodnb_midi", ["lib"], "/home/s4mpl3bi4s/ProDnB/prodnb-midi/src/lib.rs", Edition2021) }
-   2.049365428s  INFO prepare_target{force=false package_id=prodnb-midi v0.1.0 (/home/s4mpl3bi4s/ProDnB/prodnb-midi) target="prodnb_midi"}: cargo::core::compiler::fingerprint:     dirty: FsStatusOutdated(StaleDepFingerprint { name: "prodnb_core" })
-   2.049867035s  INFO prepare_target{force=false package_id=prodnb-tui v0.1.0 (/home/s4mpl3bi4s/ProDnB/prodnb-tui) target="prodnb_tui"}: cargo::core::compiler::fingerprint: fingerprint dirty for prodnb-tui v0.1.0 (/home/s4mpl3bi4s/ProDnB/prodnb-tui)/Check { test: true }/TargetInner { name_inferred: true, ..: lib_target("prodnb_tui", ["lib"], "/home/s4mpl3bi4s/ProDnB/prodnb-tui/src/lib.rs", Edition2021) }
-   2.049876559s  INFO prepare_target{force=false package_id=prodnb-tui v0.1.0 (/home/s4mpl3bi4s/ProDnB/prodnb-tui) target="prodnb_tui"}: cargo::core::compiler::fingerprint:     dirty: FsStatusOutdated(StaleDepFingerprint { name: "prodnb_core" })
+   0.297258932s  INFO prepare_target{force=false package_id=prodnb-web v0.1.0 (/home/s4mpl3bi4s/ProDnB/prodnb-web) target="prodnb-web"}: cargo::core::compiler::fingerprint: fingerprint error for prodnb-web v0.1.0 (/home/s4mpl3bi4s/ProDnB/prodnb-web)/Check { test: true }/TargetInner { name: "prodnb-web", doc: true, ..: with_path("/home/s4mpl3bi4s/ProDnB/prodnb-web/src/main.rs", Edition2021) }
+   0.297270286s  INFO prepare_target{force=false package_id=prodnb-web v0.1.0 (/home/s4mpl3bi4s/ProDnB/prodnb-web) target="prodnb-web"}: cargo::core::compiler::fingerprint:     err: failed to read `/home/s4mpl3bi4s/ProDnB/target/debug/.fingerprint/prodnb-web-c888143e98b21be9/test-bin-prodnb-web`
+
+Caused by:
+    No such file or directory (os error 2)
+
+Stack backtrace:
+   0: cargo_util::paths::read_bytes
+   1: cargo_util::paths::read
+   2: cargo::core::compiler::fingerprint::_compare_old_fingerprint
+   3: cargo::core::compiler::fingerprint::prepare_target
+   4: cargo::core::compiler::compile
+   5: <cargo::core::compiler::build_runner::BuildRunner>::compile
+   6: cargo::ops::cargo_compile::compile_ws
+   7: cargo::ops::cargo_compile::compile_with_exec
+   8: cargo::ops::cargo_compile::compile
+   9: cargo::commands::check::exec
+  10: <cargo::cli::Exec>::exec
+  11: cargo::main
+  12: std::sys::backtrace::__rust_begin_short_backtrace::<fn(), ()>
+  13: std::rt::lang_start::<()>::{closure#0}
+  14: core::ops::function::impls::<impl core::ops::function::FnOnce<A> for &F>::call_once
+             at /rustc/01f6ddf7588f42ae2d7eb0a2f21d44e8e96674cf/library/core/src/ops/function.rs:287:21
+  15: std::panicking::catch_unwind::do_call
+             at /rustc/01f6ddf7588f42ae2d7eb0a2f21d44e8e96674cf/library/std/src/panicking.rs:581:40
+  16: std::panicking::catch_unwind
+             at /rustc/01f6ddf7588f42ae2d7eb0a2f21d44e8e96674cf/library/std/src/panicking.rs:544:19
+  17: std::panic::catch_unwind
+             at /rustc/01f6ddf7588f42ae2d7eb0a2f21d44e8e96674cf/library/std/src/panic.rs:359:14
+  18: std::rt::lang_start_internal::{{closure}}
+             at /rustc/01f6ddf7588f42ae2d7eb0a2f21d44e8e96674cf/library/std/src/rt.rs:175:24
+  19: std::panicking::catch_unwind::do_call
+             at /rustc/01f6ddf7588f42ae2d7eb0a2f21d44e8e96674cf/library/std/src/panicking.rs:581:40
+  20: std::panicking::catch_unwind
+             at /rustc/01f6ddf7588f42ae2d7eb0a2f21d44e8e96674cf/library/std/src/panicking.rs:544:19
+  21: std::panic::catch_unwind
+             at /rustc/01f6ddf7588f42ae2d7eb0a2f21d44e8e96674cf/library/std/src/panic.rs:359:14
+  22: std::rt::lang_start_internal
+             at /rustc/01f6ddf7588f42ae2d7eb0a2f21d44e8e96674cf/library/std/src/rt.rs:171:5
+  23: main
+  24: <unknown>
+  25: __libc_start_main
+  26: <unknown>
     Checking prodnb-core v0.1.0 (/home/s4mpl3bi4s/ProDnB/prodnb-core)
-    Checking dotenvy v0.15.7
     Checking prodnb-midi v0.1.0 (/home/s4mpl3bi4s/ProDnB/prodnb-midi)
+    Checking prodnb-web v0.1.0 (/home/s4mpl3bi4s/ProDnB/prodnb-web)
 error: could not compile `prodnb-core` (example "integration_test") due to 1 previous error
 warning: build failed, waiting for other jobs to finish...
     Checking prodnb-audio v0.1.0 (/home/s4mpl3bi4s/ProDnB/prodnb-audio)
     Checking prodnb-tui v0.1.0 (/home/s4mpl3bi4s/ProDnB/prodnb-tui)
+error: could not compile `prodnb-web` (lib test) due to 1 previous error; 4 warnings emitted
+error: could not compile `prodnb-web` (lib) due to 1 previous error; 4 warnings emitted
     Checking prodnb-cli v0.1.0 (/home/s4mpl3bi4s/ProDnB/prodnb-cli)
