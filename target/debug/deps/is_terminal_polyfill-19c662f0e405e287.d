@@ -1,0 +1,7 @@
+/home/s4mpl3bi4s/ProDnB/target/debug/deps/is_terminal_polyfill-19c662f0e405e287.d: /home/s4mpl3bi4s/.cargo/registry/src/index.crates.io-1949cf8c6b5b557f/is_terminal_polyfill-1.70.2/src/lib.rs
+
+/home/s4mpl3bi4s/ProDnB/target/debug/deps/libis_terminal_polyfill-19c662f0e405e287.rlib: /home/s4mpl3bi4s/.cargo/registry/src/index.crates.io-1949cf8c6b5b557f/is_terminal_polyfill-1.70.2/src/lib.rs
+
+/home/s4mpl3bi4s/ProDnB/target/debug/deps/libis_terminal_polyfill-19c662f0e405e287.rmeta: /home/s4mpl3bi4s/.cargo/registry/src/index.crates.io-1949cf8c6b5b557f/is_terminal_polyfill-1.70.2/src/lib.rs
+
+/home/s4mpl3bi4s/.cargo/registry/src/index.crates.io-1949cf8c6b5b557f/is_terminal_polyfill-1.70.2/src/lib.rs:

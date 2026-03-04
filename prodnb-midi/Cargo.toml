@@ -1,0 +1,14 @@
+[package]
+name = "prodnb-midi"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+authors.workspace = true
+
+[dependencies]
+midly = { workspace = true }
+anyhow = { workspace = true }
+thiserror = { workspace = true }
+prodnb-core = { path = "../prodnb-core" }
+log = { workspace = true }
+serde = { workspace = true }

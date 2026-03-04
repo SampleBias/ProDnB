@@ -1,0 +1,22 @@
+[package]
+name = "prodnb-cli"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+authors.workspace = true
+
+[[bin]]
+name = "prodnb"
+path = "src/main.rs"
+
+[dependencies]
+prodnb-core = { path = "../prodnb-core" }
+prodnb-midi = { path = "../prodnb-midi" }
+prodnb-audio = { path = "../prodnb-audio" }
+prodnb-tui = { path = "../prodnb-tui" }
+anyhow = { workspace = true }
+log = { workspace = true }
+env_logger = { workspace = true }
+clap = { version = "4.5", features = ["derive"] }
+crossterm = { workspace = true }
+ratatui = { workspace = true }

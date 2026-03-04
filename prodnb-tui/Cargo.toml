@@ -1,0 +1,18 @@
+[package]
+name = "prodnb-tui"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+authors.workspace = true
+
+[dependencies]
+ratatui = { workspace = true }
+crossterm = { workspace = true }
+anyhow = { workspace = true }
+thiserror = { workspace = true }
+prodnb-core = { path = "../prodnb-core" }
+prodnb-audio = { path = "../prodnb-audio" }
+prodnb-midi = { path = "../prodnb-midi" }
+log = { workspace = true }
+rand = { workspace = true }
+spin = { workspace = true }
