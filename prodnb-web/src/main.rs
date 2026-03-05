@@ -9,7 +9,7 @@ use askama::Template;
 mod handlers;
 mod templates;
 
-use handlers::{upload_pdb, generate_strudel, generate_strudel_stream, map_primitives, assemble_from_primitives, health_check};
+use handlers::{upload_pdb, generate_strudel, generate_strudel_stream, map_primitives, assemble_from_primitives, health_check, api_info};
 use templates::IndexTemplate;
 
 #[actix_web::main]
@@ -20,26 +20,26 @@ async fn main() -> std::io::Result<()> {
     let bind_address = std::env::var("BIND_ADDRESS")
         .unwrap_or_else(|_| "127.0.0.1:8080".to_string());
 
-    // Get the static files directory path
     let static_dir = std::path::PathBuf::from("./prodnb-web/static");
-    
+
     log::info!("Starting ProDnB Web Server on {}", bind_address);
     log::info!("Access at http://{}", bind_address);
-    log::info!("Static files from: {}", static_dir.display());
 
     HttpServer::new(move || {
         let static_dir = static_dir.clone();
         App::new()
-            // Static files
-            .service(actix_files::Files::new("/static", static_dir).show_files_listing())
-            // Routes
             .route("/", web::get().to(index))
             .route("/health", web::get().to(health_check))
-            .route("/api/upload", web::post().to(upload_pdb))
-            .route("/api/generate", web::post().to(generate_strudel))
-            .route("/api/generate/stream", web::post().to(generate_strudel_stream))
-            .route("/api/map", web::post().to(map_primitives))
-            .route("/api/assemble", web::post().to(assemble_from_primitives))
+            .service(
+                web::scope("/api")
+                    .route("", web::get().to(api_info))
+                    .route("/upload", web::post().to(upload_pdb))
+                    .route("/map", web::post().to(map_primitives))
+                    .route("/assemble", web::post().to(assemble_from_primitives))
+                    .route("/generate", web::post().to(generate_strudel))
+                    .route("/generate/stream", web::post().to(generate_strudel_stream))
+            )
+            .service(actix_files::Files::new("/static", static_dir).show_files_listing())
     })
     .bind(&bind_address)?
     .run()

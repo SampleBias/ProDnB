@@ -50,6 +50,20 @@ pub async fn health_check() -> impl actix_web::Responder {
     }))
 }
 
+/// API info - GET /api returns available endpoints (for debugging 404s)
+pub async fn api_info() -> impl actix_web::Responder {
+    HttpResponse::Ok().json(serde_json::json!({
+        "status": "ok",
+        "endpoints": [
+            "POST /api/upload",
+            "POST /api/map",
+            "POST /api/assemble",
+            "POST /api/generate",
+            "POST /api/generate/stream"
+        ]
+    }))
+}
+
 /// Handle PDB file upload
 pub async fn upload_pdb(mut payload: Multipart) -> Result<HttpResponse, Error> {
     let mut file_path: Option<String> = None;
@@ -269,7 +283,7 @@ pub async fn generate_strudel_stream(
         })?;
 
     let user_content = format!(
-        "Arrange these pre-mapped Strudel primitives into a full Drum & Bass track.\n\nFramework:\n{}\n\nOutput ONLY valid Strudel code.",
+        "Arrange these pre-mapped Strudel primitives into Drum & Bass Strudel code.\n\nFramework (primitives with pattern, gain, layer):\n{}\n\nOutput ONLY valid Strudel code. Use each primitive's pattern. For intensity use .gain(slider(X, 0, 1)) so Strudel.cc adds sliders. Piano roll = patterns in stack. Format: setcps(0.725) then d1 $ stack([s(\"...\").gain(slider(0.9, 0, 1)), ...]).",
         framework_json
     );
 
@@ -297,7 +311,7 @@ pub async fn generate_strudel_stream(
         let body = serde_json::json!({
             "model": "groq/compound",
             "messages": [
-                {"role": "system", "content": DNB_SYSTEM_PROMPT},
+                {"role": "system", "content": dnb_system_prompt()},
                 {"role": "user", "content": user_content}
             ],
             "max_tokens": 2048,
@@ -398,28 +412,22 @@ pub async fn generate_strudel_stream(
         .with_retry_duration(std::time::Duration::from_secs(10)))
 }
 
-/// DnB arrangement system prompt for LLM (stage 2 after deterministic mapping).
-const DNB_SYSTEM_PROMPT: &str = r#"You are a Drum & Bass music arranger specializing in Strudel.cc. You receive pre-mapped Strudel primitives from a protein structure.
+/// Strudel knowledge base - local reference for clean executable code
+const STRUDEL_KNOWLEDGE: &str = include_str!("../strudel_knowledge.md");
 
-CRITICAL - Strudel REPL format (MUST follow):
-- NEVER use variable assignments like "bd = s(...)" - the name "bd" conflicts with the sample and causes "bd is not defined" errors
-- ALWAYS use: d1 $ stack(s("pattern1"), s("pattern2"), ...) with patterns inlined
-- Example: setcps(0.725)
-  d1 $ stack(s("bd*4"), s("sd ~ ~ sd"), s("hh*8"))
-- All patterns must be inline inside s("...") - no variables
+/// DnB arrangement system prompt for LLM (includes knowledge base)
+fn dnb_system_prompt() -> String {
+    format!(r#"You are a Drum & Bass music arranger for Strudel.cc. Use this knowledge base for clean, executable code:
 
-DnB REQUIREMENTS:
-- Tempo: 174 BPM (setcps(0.725))
-- Kick on 1 and 3+, snare on 2 and 4, hi-hats on 16ths (hh*8)
-- Use syncopation, offbeat emphasis, ghost snares (~ sd)
-- 4/4 time, 16th-note subdivisions
+{}
+---
 
-Strudel syntax:
-- s("bd sd hh") for patterns; setcps(0.725) for tempo
-- Mini-notation: ~ rest, * speed (hh*8), [] subdivide, (beats,segments) euclidean
-- Drum sounds: bd, sd, hh, cp, rim, oh (these are sample NAMES inside strings only)
-
-Use ONLY the provided primitives. Output: setcps(...) then d1 $ stack(s("..."), s("..."), ...). No markdown, no variables."#;
+RULES:
+- Use ONLY the provided primitives from the framework
+- Output: setcps(0.725) then d1 $ stack([...]) with .gain(slider(X, 0, 1)) for intensity
+- Piano roll = the patterns in stack (kick, snare, hats, perc). No separate UI.
+- No variables, no markdown"#, STRUDEL_KNOWLEDGE)
+}
 
 /// Call Groq API with protein framework to generate Strudel code
 async fn call_groq_api(framework_json: &str) -> Result<String> {
@@ -427,7 +435,7 @@ async fn call_groq_api(framework_json: &str) -> Result<String> {
         .context("GROQ_API_KEY environment variable not set")?;
 
     let user_content = format!(
-        "Arrange these pre-mapped Strudel primitives into a full Drum & Bass track.\n\nFramework (includes primitives from protein mapping):\n{}\n\nOutput ONLY valid Strudel code.",
+        "Arrange these pre-mapped Strudel primitives into Drum & Bass Strudel code.\n\nFramework (primitives with pattern, gain, layer):\n{}\n\nOutput ONLY valid Strudel code. Use each primitive's pattern. For intensity use .gain(slider(X, 0, 1)) so Strudel.cc adds sliders. Piano roll = patterns in stack. Format: setcps(0.725) then d1 $ stack([s(\"...\").gain(slider(0.9, 0, 1)), ...]).",
         framework_json
     );
 
@@ -441,7 +449,7 @@ async fn call_groq_api(framework_json: &str) -> Result<String> {
     let body = serde_json::json!({
         "model": "groq/compound",
         "messages": [
-            {"role": "system", "content": DNB_SYSTEM_PROMPT},
+            {"role": "system", "content": dnb_system_prompt()},
             {"role": "user", "content": user_content}
         ],
         "max_tokens": 2048,
@@ -473,7 +481,7 @@ async fn call_groq_api(framework_json: &str) -> Result<String> {
         .to_string();
 
     // Strip markdown code blocks if present
-    let content = if content.starts_with("```") {
+    let mut content = if content.starts_with("```") {
         content
             .trim_start_matches("```")
             .trim_start_matches("javascript")
@@ -487,5 +495,24 @@ async fn call_groq_api(framework_json: &str) -> Result<String> {
         content
     };
 
+    // Fix common LLM mistake: (5,8)bd -> bd(5,8) (euclidean must be sound first)
+    content = fix_euclidean_order(&content);
+
     Ok(content)
+}
+
+/// Fix reversed euclidean patterns: (beats,segments)sound -> sound(beats,segments)
+fn fix_euclidean_order(code: &str) -> String {
+    let sounds = ["bd", "sd", "hh", "cp", "rim", "oh", "perc"];
+    let mut out = code.to_string();
+    for sound in sounds {
+        for beats in 2..=7 {
+            for segments in 4..=16 {
+                let wrong = format!("\"({},{}){}\"", beats, segments, sound);
+                let right = format!("\"{}({},{})\"", sound, beats, segments);
+                out = out.replace(&wrong, &right);
+            }
+        }
+    }
+    out
 }

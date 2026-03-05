@@ -268,11 +268,16 @@ ProDnB/
 │   │   └── framework.rs  # LLM framework (primitives + features)
 │   └── ...
 ├── prodnb-web/           # Web server
+│   ├── strudel_knowledge.md  # Local knowledge base for LLM (from strudel.cc, strudelmarket.com)
 │   ├── src/handlers.rs   # API + DnB system prompt
 │   ├── templates/
 │   └── static/
 └── README.md
 ```
+
+## Strudel Knowledge Base
+
+`prodnb-web/strudel_knowledge.md` is a local reference compiled from the [Strudel.cc](https://strudel.cc) docs, [strudel cheatsheet](https://eggg.uk/strudel/cheatsheet/), and [Strudel Patterns](https://www.strudelmarket.com/). It is embedded in the LLM system prompt so generated code always follows valid syntax and common DnB patterns.
 
 ---
 

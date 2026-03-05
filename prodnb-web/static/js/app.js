@@ -27,21 +27,6 @@ class ProDnBApp {
         this.streamBtnText = this.generateStreamBtn?.querySelector('.btn-text');
         this.streamBtnLoading = this.generateStreamBtn?.querySelector('.btn-loading');
 
-        // Sliders
-        this.slidersSection = document.getElementById('slidersSection');
-        this.kickSlider = document.getElementById('kickSlider');
-        this.snareSlider = document.getElementById('snareSlider');
-        this.hatsSlider = document.getElementById('hatsSlider');
-        this.energySlider = document.getElementById('energySlider');
-        this.kickValue = document.getElementById('kickValue');
-        this.snareValue = document.getElementById('snareValue');
-        this.hatsValue = document.getElementById('hatsValue');
-        this.energyValue = document.getElementById('energyValue');
-
-        // Piano roll
-        this.pianoRollSection = document.getElementById('pianoRollSection');
-        this.pianoRollGrid = document.getElementById('pianoRollGrid');
-
         // Output elements
         this.strudelCode = document.getElementById('strudelCode');
         this.copyBtn = document.getElementById('copyBtn');
@@ -99,24 +84,6 @@ class ProDnBApp {
             this.generateStreamBtn.addEventListener('click', () => {
                 this.generateStrudelStream();
             });
-        }
-
-        // Sliders
-        if (this.kickSlider) {
-            this.kickSlider.addEventListener('input', () => this.onSliderChange());
-            this.kickSlider.addEventListener('change', () => this.onSliderChange());
-        }
-        if (this.snareSlider) {
-            this.snareSlider.addEventListener('input', () => this.onSliderChange());
-            this.snareSlider.addEventListener('change', () => this.onSliderChange());
-        }
-        if (this.hatsSlider) {
-            this.hatsSlider.addEventListener('input', () => this.onSliderChange());
-            this.hatsSlider.addEventListener('change', () => this.onSliderChange());
-        }
-        if (this.energySlider) {
-            this.energySlider.addEventListener('input', () => this.onSliderChange());
-            this.energySlider.addEventListener('change', () => this.onSliderChange());
         }
 
         // Copy code
@@ -199,132 +166,34 @@ class ProDnBApp {
 
             if (!response.ok) {
                 const err = await response.json().catch(() => ({}));
-                const msg = err.error || err.message || `Map failed (${response.status})`;
+                let msg = err.error || err.message || `Map failed (${response.status})`;
+                if (response.status === 404) {
+                    msg = 'API not found (404). Rebuild and restart the server: cargo build -p prodnb-web && cargo run -p prodnb-web';
+                }
                 throw new Error(msg);
             }
 
             this.mappedPrimitives = await response.json();
 
-            // Show sliders and piano roll
-            if (this.slidersSection) {
-                this.slidersSection.classList.remove('hidden');
-                this.updateSliderValuesFromPrimitives();
-            }
-            if (this.pianoRollSection) {
-                this.pianoRollSection.classList.remove('hidden');
-                this.renderPianoRoll();
-            }
-
-            // Assemble from primitives (no LLM) for initial display
-            await this.assembleFromSliders();
+            // Assemble from primitives (no LLM) for initial display - intensity & piano roll in Strudel output
+            await this.assembleFromPrimitives();
         } catch (error) {
             console.error('Map error:', error);
             this.showStatus(error.message || 'Failed to map primitives', 'error');
+            // Don't block - user can still use Generate (LLM)
         }
     }
 
-    updateSliderValuesFromPrimitives() {
-        if (!this.mappedPrimitives?.primitives) return;
-
-        for (const p of this.mappedPrimitives.primitives) {
-            const gainPct = Math.round((p.gain || 0.8) * 100);
-            if (p.layer === 'kick' && this.kickSlider) {
-                this.kickSlider.value = gainPct;
-                if (this.kickValue) this.kickValue.textContent = gainPct + '%';
-            } else if (p.layer === 'snare' && this.snareSlider) {
-                this.snareSlider.value = gainPct;
-                if (this.snareValue) this.snareValue.textContent = gainPct + '%';
-            } else if (p.layer === 'hats' && this.hatsSlider) {
-                this.hatsSlider.value = gainPct;
-                if (this.hatsValue) this.hatsValue.textContent = gainPct + '%';
-            }
-        }
-    }
-
-    renderPianoRoll() {
-        if (!this.pianoRollGrid || !this.mappedPrimitives?.primitives) return;
-
-        const primitives = this.mappedPrimitives.primitives;
-        const cols = 16;
-
-        // Parse pattern to events per row (simplified: expand pattern to 16 slots)
-        const expandPattern = (pattern) => {
-            if (!pattern) return Array(cols).fill('~');
-            const parts = pattern.split(/\s+/);
-            const out = [];
-            for (let i = 0; i < cols; i++) {
-                const idx = i % parts.length;
-                out.push(parts[idx] === '~' ? '' : parts[idx]);
-            }
-            return out;
-        };
-
-        let html = '';
-
-        // Header row
-        html += '<div class="piano-roll-cell header"></div>';
-        for (let c = 0; c < cols; c++) {
-            html += `<div class="piano-roll-cell header">${c + 1}</div>`;
-        }
-
-        for (const p of primitives) {
-            const layer = p.layer || p.primitive_type;
-            let events;
-            if (p.primitive_type === 'euclidean' && p.sound && p.beats != null && p.segments != null) {
-                events = this.euclideanToEvents(p.sound, p.beats, p.segments, cols);
-            } else {
-                events = expandPattern(p.pattern);
-            }
-
-            html += `<div class="piano-roll-cell header">${layer}</div>`;
-            for (const ev of events) {
-                const cls = ev ? 'active' : 'rest';
-                html += `<div class="piano-roll-cell ${cls}">${ev || ''}</div>`;
-            }
-        }
-
-        this.pianoRollGrid.innerHTML = html;
-    }
-
-    euclideanToEvents(sound, beats, segments, cols) {
-        const out = Array(cols).fill('');
-        for (let i = 0; i < beats; i++) {
-            const pos = Math.floor((i * segments) / beats) % cols;
-            out[pos] = sound;
-        }
-        return out;
-    }
-
-    getSliderValues() {
-        return {
-            kick: this.kickSlider ? parseInt(this.kickSlider.value, 10) / 100 : undefined,
-            snare: this.snareSlider ? parseInt(this.snareSlider.value, 10) / 100 : undefined,
-            hats: this.hatsSlider ? parseInt(this.hatsSlider.value, 10) / 100 : undefined,
-            energy: this.energySlider ? parseInt(this.energySlider.value, 10) / 100 : undefined
-        };
-    }
-
-    async onSliderChange() {
-        if (this.kickValue) this.kickValue.textContent = (this.kickSlider?.value || 90) + '%';
-        if (this.snareValue) this.snareValue.textContent = (this.snareSlider?.value || 85) + '%';
-        if (this.hatsValue) this.hatsValue.textContent = (this.hatsSlider?.value || 60) + '%';
-        if (this.energyValue) this.energyValue.textContent = (this.energySlider?.value || 100) + '%';
-
-        await this.assembleFromSliders();
-    }
-
-    async assembleFromSliders() {
+    async assembleFromPrimitives() {
         if (!this.mappedPrimitives) return;
 
         try {
-            const sliders = this.getSliderValues();
             const response = await fetch('/api/assemble', {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json' },
                 body: JSON.stringify({
                     primitives: this.mappedPrimitives.primitives,
-                    tempo: this.mappedPrimitives.tempo || 174,
-                    sliders: sliders
+                    tempo: this.mappedPrimitives.tempo || 174
                 })
             });
 
@@ -353,8 +222,6 @@ class ProDnBApp {
         this.uploadArea.classList.remove('hidden');
         this.generateBtn.disabled = true;
         if (this.generateStreamBtn) this.generateStreamBtn.disabled = true;
-        if (this.slidersSection) this.slidersSection.classList.add('hidden');
-        if (this.pianoRollSection) this.pianoRollSection.classList.add('hidden');
     }
 
     async generateStrudel() {
@@ -458,6 +325,7 @@ class ProDnBApp {
             if (finalCode.startsWith('```')) {
                 finalCode = finalCode.replace(/^```(?:javascript|js|strudel)?\n?/, '').replace(/\n?```$/, '').trim();
             }
+            finalCode = this.fixEuclideanOrder(finalCode);
 
             this.strudelCode.textContent = finalCode || code;
             this.strudelCode.style.color = '';
@@ -533,6 +401,11 @@ class ProDnBApp {
         this.statusTimeout = setTimeout(() => {
             this.statusMessage.classList.add('hidden');
         }, 5000);
+    }
+
+    /** Fix reversed euclidean: (5,8)bd -> bd(5,8) */
+    fixEuclideanOrder(code) {
+        return code.replace(/"\((\d+),(\d+)\)(bd|sd|hh|cp|rim|oh|perc)"/g, '"$3($1,$2)"');
     }
 }
 

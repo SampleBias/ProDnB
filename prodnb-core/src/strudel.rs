@@ -82,16 +82,16 @@ pub fn protein_to_strudel(protein: &Protein, bpm: u16) -> String {
     let bars = (sampled.len() / 4).max(1);
 
     format!(
-        r#"// ProDnB Strudel code (from PDB)
+        r#"// ProDnB Strudel code (from PDB) - Strudel JS mode
 // {} atoms → {} sounds
 
 setcps({})
 
-d1 $ stack [
-  sound "{}"
-  sound "hh*{}"
-  sound "bd*4"
-]
+stack(
+  s("{}"),
+  s("hh*{}"),
+  s("bd*4")
+)
 "#,
         atoms.len(),
         sampled.len(),
@@ -121,7 +121,7 @@ pub fn protein_to_strudel_layered(protein: &Protein, bpm: u16) -> String {
         }
         let pattern = sounds.join(" ");
         let d = format!("d{}", (i % 4) + 1);
-        parts.push(format!(r#"  {} $ sound "{}""#, d, pattern));
+        parts.push(format!(r#"  {}.set(s("{}"))"#, d, pattern));
     }
 
     if parts.is_empty() {
@@ -295,7 +295,8 @@ pub struct SliderValues {
     pub energy: Option<f64>,
 }
 
-/// Assemble Strudel code from primitives + optional slider values, no LLM.
+/// Assemble Strudel code from primitives. Intensity controls use slider() for Strudel.cc UI.
+/// Piano roll patterns are in the stack output.
 pub fn assemble_strudel(mapped: &MappedOutput, sliders: Option<&SliderValues>) -> String {
     let cps = mapped.tempo as f64 / 60.0 / 4.0;
 
@@ -312,33 +313,36 @@ pub fn assemble_strudel(mapped: &MappedOutput, sliders: Option<&SliderValues>) -
         } else {
             p.gain
         };
+        // slider(value, min, max) - Strudel.cc adds interactive sliders in the REPL
+        let gain_expr = format!("slider({:.2}, 0, 1)", gain);
 
         let pattern = if p.primitive_type == "euclidean" {
             if let (Some(sound), Some(beats), Some(segments)) = (p.sound.as_ref(), p.beats, p.segments) {
                 let eucl = format!("{}({},{})", sound, beats, segments);
-                format!(r#"s("{}").gain({})"#, eucl, gain)
+                format!(r#"s("{}").gain({})"#, eucl, gain_expr)
             } else {
                 continue;
             }
         } else if let Some(ref pat) = p.pattern {
-            format!(r#"s("{}").gain({})"#, pat, gain)
+            format!(r#"s("{}").gain({})"#, pat, gain_expr)
         } else {
             continue;
         };
         parts.push(pattern);
     }
 
+    // JS mode: stack(p1, p2, ...) variadic - no d1 $, no array (Tidal syntax breaks in Strudel default REPL)
     let stack_body = parts.join(",\n  ");
     format!(
-        r#"// ProDnB assembled from primitives
+        r#"// ProDnB assembled from primitives (Strudel JS mode)
+// Intensity: slider() adds controls in Strudel.cc UI.
 setcps({})
 
-d1 $ stack [
+stack(
   {}
-]
+)
 "#,
-        cps
-            .max(0.1),
+        cps.max(0.1),
         stack_body
     )
 }
@@ -347,14 +351,14 @@ d1 $ stack [
 pub fn default_strudel_code(bpm: u16) -> String {
     let cps = bpm as f64 / 60.0 / 4.0;
     format!(
-        r#"// ProDnB default (no protein loaded)
+        r#"// ProDnB default (no protein loaded) - Strudel JS mode
 setcps({})
 
-d1 $ stack [
-  sound "bd*4"
-  sound "sd ~ ~ sd"
-  sound "hh*8"
-]
+stack(
+  s("bd*4"),
+  s("sd ~ ~ sd"),
+  s("hh*8")
+)
 "#,
         cps
     )
