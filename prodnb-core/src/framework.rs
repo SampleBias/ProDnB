@@ -6,11 +6,13 @@
 
 use crate::protein::Protein;
 use crate::features::FeatureExtractor;
+use crate::strudel::{protein_to_primitives, StrudelPrimitive};
 use anyhow::Result;
 use serde::{Serialize, Deserialize};
 use std::collections::HashMap;
 
 /// Framework file: preprocessed protein data for LLM musical assembly.
+/// Includes deterministic Strudel primitives from PDB mapping.
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct ProteinFramework {
     /// Element counts (C, N, O, S, P, etc.) → drum mapping hints
@@ -35,12 +37,20 @@ pub struct ProteinFramework {
 
     /// Chain lengths for polyrhythmic layering
     pub chain_lengths: Vec<usize>,
+
+    /// Deterministic Strudel primitives from PDB mapping (for LLM arrangement)
+    pub primitives: Vec<StrudelPrimitive>,
+
+    /// Tempo in BPM (default 174 for DnB)
+    pub tempo: u16,
 }
 
 impl ProteinFramework {
     /// Build framework from protein. CPU path; GPU will replace this later.
+    /// Stage 1: deterministic mapping produces primitives; LLM arranges in stage 2.
     pub fn from_protein(protein: &Protein) -> Result<Self> {
         let features = FeatureExtractor::extract(protein)?;
+        let mapped = protein_to_primitives(protein, 174)?;
 
         let mut element_counts: HashMap<String, usize> = HashMap::new();
         for atom in protein.all_atoms() {
@@ -50,10 +60,8 @@ impl ProteinFramework {
             }
         }
 
-        let rhythm_seed = Self::build_rhythm_seed(protein);
-        let chain_lengths: Vec<usize> = protein.chains.iter()
-            .map(|c| c.residues.len())
-            .collect();
+        let rhythm_seed = mapped.rhythm_seed;
+        let chain_lengths = mapped.chain_lengths;
 
         Ok(ProteinFramework {
             element_counts,
@@ -68,34 +76,9 @@ impl ProteinFramework {
             aromatic_ratio: features.aromatic_residue_ratio,
             rhythm_seed,
             chain_lengths,
+            primitives: mapped.primitives,
+            tempo: mapped.tempo,
         })
-    }
-
-    fn element_to_sound(element: &str) -> &'static str {
-        match element.to_uppercase().as_str() {
-            "C" => "bd",
-            "N" => "sd",
-            "O" => "hh",
-            "S" => "cp",
-            "P" => "rim",
-            _ => "perc",
-        }
-    }
-
-    fn build_rhythm_seed(protein: &Protein) -> String {
-        let atoms: Vec<_> = protein.all_atoms()
-            .filter(|a| a.element.to_uppercase() != "H")
-            .collect();
-        if atoms.is_empty() {
-            return "bd sd hh".to_string();
-        }
-        let step = (atoms.len() / 24).max(1).min(4);
-        atoms.iter()
-            .step_by(step)
-            .take(24)
-            .map(|a| Self::element_to_sound(&a.element))
-            .collect::<Vec<_>>()
-            .join(" ")
     }
 
     /// Serialize to JSON for Groq.

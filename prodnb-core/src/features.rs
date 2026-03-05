@@ -29,6 +29,10 @@ impl FeatureExtractor {
         let residue_count = protein.residue_count();
         let total_atoms = protein.all_atoms().count();
 
+        if total_atoms == 0 {
+            anyhow::bail!("Protein has no atoms");
+        }
+
         let ca_atoms: Vec<_> = protein.ca_atoms().collect();
 
         let (radius_of_gyration, center_of_mass) = if ca_atoms.is_empty() {
@@ -60,16 +64,28 @@ impl FeatureExtractor {
         let contact_density = Self::calculate_contact_density(&ca_atoms, center_of_mass);
 
         let b_factors: Vec<f64> = protein.all_atoms().map(|a| a.b_factor).collect();
-        let avg_b_factor = b_factors.iter().sum::<f64>() / b_factors.len() as f64;
+        let avg_b_factor = if b_factors.is_empty() {
+            0.0
+        } else {
+            b_factors.iter().sum::<f64>() / b_factors.len() as f64
+        };
         let b_factor_variance = Self::variance(&b_factors, avg_b_factor);
 
         let chain_lengths: Vec<f64> = protein.chains.iter()
             .map(|c| c.residues.len() as f64)
             .collect();
-        let avg_chain_length = chain_lengths.iter().sum::<f64>() / chain_lengths.len() as f64;
+        let avg_chain_length = if chain_lengths.is_empty() {
+            0.0
+        } else {
+            chain_lengths.iter().sum::<f64>() / chain_lengths.len() as f64
+        };
         let chain_length_variance = Self::variance(&chain_lengths, avg_chain_length);
 
-        let (hydrophobic_ratio, charged_ratio, aromatic_ratio) = Self::calculate_composition(protein);
+        let (hydrophobic_ratio, charged_ratio, aromatic_ratio) = if residue_count > 0 {
+            Self::calculate_composition(protein)
+        } else {
+            (0.0, 0.0, 0.0)
+        };
 
         Ok(ProteinFeatures {
             chain_count,

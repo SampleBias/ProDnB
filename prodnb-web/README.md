@@ -2,13 +2,16 @@
 
 A web interface for converting PDB protein files to Strudel Drum & Bass music code.
 
+**For full documentation including the detailed PDB mapping algorithm, see the [main README](../README.md).**
+
 ## Features
 
 - **Drag & Drop PDB Upload**: Upload protein structure files (.pdb, .ent, .cif)
-- **AI-Powered Generation**: Uses Groq's Compound AI model to create aesthetically pleasing Strudel code
-- **Simple UI**: Clean, modern interface called "ProDnB"
-- **Copy-Paste Ready**: Generated code appears in a code block for easy copying to strudel.cc
-- **Real-time Feedback**: Shows protein statistics (chains, residues, atoms)
+- **Two-Stage Pipeline**: Deterministic PDB mapping → LLM arrangement (Groq Compound)
+- **Streaming Generation**: SSE streaming for real-time code output
+- **Piano Roll**: Visual grid of mapped primitives
+- **Intensity Sliders**: Kick, Snare, Hi-Hats, Energy controls
+- **Copy-Paste Ready**: Generated code for [strudel.cc](https://strudel.cc)
 
 ## Prerequisites
 
@@ -65,11 +68,11 @@ The server will start on `http://127.0.0.1:8080` by default.
 
 ## How It Works
 
-1. **PDB Parsing**: The server parses the uploaded PDB file to extract protein structure data
-2. **Feature Extraction**: Computes structural features (chains, residues, atom composition)
-3. **Framework Generation**: Creates a compact JSON representation for the LLM
-4. **AI Processing**: Sends the framework to Groq's Compound model with music generation instructions
-5. **Strudel Code**: The AI returns valid Strudel code for Drum & Bass music
+1. **PDB Parsing**: Parse uploaded PDB to extract atoms (element, b-factor, occupancy, chain)
+2. **Stage 1 – Mapping**: Deterministic algorithm maps elements → sounds, b-factor variance → euclidean rhythm, occupancy → gain
+3. **Primitives**: Output structured JSON (kick, snare, hats, perc) for piano roll and sliders
+4. **Stage 2 – LLM**: Framework (primitives + features) sent to Groq Compound with DnB system prompt
+5. **Strudel Code**: AI returns valid Strudel code; or assemble from primitives + sliders (no LLM)
 
 ## API Endpoints
 
@@ -96,25 +99,27 @@ Upload a PDB file.
 }
 ```
 
+### POST /api/map
+Map PDB to Strudel primitives (deterministic, no LLM).
+
+**Request**: `{ "file_path": "...", "bpm": 174 }`
+
+**Response**: `MappedOutput` JSON with `primitives`, `rhythm_seed`, `chain_lengths`, `element_counts`
+
+### POST /api/assemble
+Assemble Strudel from primitives + optional slider values (no LLM).
+
+**Request**: `{ "primitives": [...], "tempo": 174, "sliders": { "kick": 0.9, "snare": 0.85, "hats": 0.6, "energy": 1.0 } }`
+
 ### POST /api/generate
-Generate Strudel code from an uploaded PDB file.
+Generate Strudel code via LLM (non-streaming).
 
-**Request**:
-```json
-{
-  "file_path": "/tmp/tmpXXX.pdb"
-}
-```
+**Request**: `{ "file_path": "/tmp/tmpXXX.pdb" }`
 
-**Response**:
-```json
-{
-  "success": true,
-  "code": "setcps(0.7)\nd1 $ sound \"bd sd hh\"...",
-  "chain_count": 2,
-  "residue_count": 150
-}
-```
+**Response**: `{ "success": true, "code": "..." }`
+
+### POST /api/generate/stream
+Generate Strudel code via LLM (SSE streaming).
 
 ## Environment Variables
 

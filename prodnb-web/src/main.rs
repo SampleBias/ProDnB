@@ -9,7 +9,7 @@ use askama::Template;
 mod handlers;
 mod templates;
 
-use handlers::{upload_pdb, generate_strudel, health_check};
+use handlers::{upload_pdb, generate_strudel, generate_strudel_stream, map_primitives, assemble_from_primitives, health_check};
 use templates::IndexTemplate;
 
 #[actix_web::main]
@@ -37,6 +37,9 @@ async fn main() -> std::io::Result<()> {
             .route("/health", web::get().to(health_check))
             .route("/api/upload", web::post().to(upload_pdb))
             .route("/api/generate", web::post().to(generate_strudel))
+            .route("/api/generate/stream", web::post().to(generate_strudel_stream))
+            .route("/api/map", web::post().to(map_primitives))
+            .route("/api/assemble", web::post().to(assemble_from_primitives))
     })
     .bind(&bind_address)?
     .run()

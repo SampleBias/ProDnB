@@ -3,14 +3,18 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <meta http-equiv="Cache-Control" content="no-cache, no-store, must-revalidate">
     <title>{{ title }}</title>
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Press+Start+2P&display=swap" rel="stylesheet">
     <link rel="stylesheet" href="/static/css/style.css">
 </head>
 <body>
     <div class="container">
         <header>
             <h1>ProDnB</h1>
-            <p class="subtitle">PDB Protein to Strudel Drum & Bass Converter</p>
+            <p class="subtitle">Where Protein Topology Becomes the Drop.</p>
         </header>
 
         <main>
@@ -40,11 +44,52 @@
             <!-- Generate Section -->
             <section class="generate-section">
                 <h2>Step 2: Generate Strudel Code</h2>
-                <button class="btn btn-primary" id="generateBtn" disabled>
-                    <span class="btn-text">Generate Strudel Code</span>
-                    <span class="btn-loading hidden">Generating...</span>
-                </button>
-                <p class="hint"><strong>Note:</strong> This uses Groq's Compound AI model to create music from your protein structure</p>
+                <div class="generate-buttons">
+                    <button class="btn btn-primary" id="generateBtn" disabled>
+                        <span class="btn-text">Generate (LLM)</span>
+                        <span class="btn-loading hidden">Generating...</span>
+                    </button>
+                    <button class="btn btn-secondary" id="generateStreamBtn" disabled>
+                        <span class="btn-text">Generate (Stream)</span>
+                        <span class="btn-loading hidden">Streaming...</span>
+                    </button>
+                </div>
+                <p class="hint"><strong>Note:</strong> Map first (deterministic), then LLM arranges. Uses Groq Compound AI.</p>
+            </section>
+
+            <!-- Intensity Sliders -->
+            <section class="sliders-section hidden" id="slidersSection">
+                <h2>Intensity Controls</h2>
+                <div class="sliders-grid">
+                    <div class="slider-row">
+                        <label for="kickSlider">Kick</label>
+                        <input type="range" id="kickSlider" min="0" max="100" value="90" class="slider">
+                        <span class="slider-value" id="kickValue">90%</span>
+                    </div>
+                    <div class="slider-row">
+                        <label for="snareSlider">Snare</label>
+                        <input type="range" id="snareSlider" min="0" max="100" value="85" class="slider">
+                        <span class="slider-value" id="snareValue">85%</span>
+                    </div>
+                    <div class="slider-row">
+                        <label for="hatsSlider">Hi-Hats</label>
+                        <input type="range" id="hatsSlider" min="0" max="100" value="60" class="slider">
+                        <span class="slider-value" id="hatsValue">60%</span>
+                    </div>
+                    <div class="slider-row">
+                        <label for="energySlider">Energy</label>
+                        <input type="range" id="energySlider" min="0" max="100" value="100" class="slider">
+                        <span class="slider-value" id="energyValue">100%</span>
+                    </div>
+                </div>
+            </section>
+
+            <!-- Piano Roll -->
+            <section class="piano-roll-section hidden" id="pianoRollSection">
+                <h2>Piano Roll</h2>
+                <div class="piano-roll-container" id="pianoRollContainer">
+                    <div class="piano-roll-grid" id="pianoRollGrid"></div>
+                </div>
             </section>
 
             <!-- Output Section -->

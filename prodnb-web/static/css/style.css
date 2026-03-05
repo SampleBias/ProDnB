@@ -44,10 +44,15 @@ header {
 }
 
 header h1 {
-    font-size: 2.25rem;
-    font-weight: 700;
+    font-family: 'Press Start 2P', monospace;
+    font-size: 2rem;
+    font-weight: 400;
     color: var(--text-color);
     margin-bottom: 0.25rem;
+    text-shadow:
+        1px 0 0 currentColor,
+        0 1px 0 currentColor,
+        1px 1px 0 currentColor;
 }
 
 .subtitle {
@@ -188,6 +193,136 @@ section h2 {
 .btn-primary:hover:not(:disabled) {
     background: var(--primary-hover);
     border-color: var(--primary-hover);
+}
+
+.btn-secondary {
+    background: var(--bg-color);
+    color: var(--text-color);
+    border: 1px solid var(--code-border);
+}
+
+.btn-secondary:hover:not(:disabled) {
+    background: var(--code-bg);
+}
+
+.generate-buttons {
+    display: flex;
+    gap: 0.75rem;
+    flex-wrap: wrap;
+}
+
+.generate-buttons .btn {
+    flex: 1;
+    min-width: 140px;
+}
+
+/* Intensity Sliders */
+.sliders-section {
+    padding: 1rem 0;
+}
+
+.sliders-section.hidden {
+    display: none !important;
+}
+
+.sliders-grid {
+    display: flex;
+    flex-direction: column;
+    gap: 1rem;
+}
+
+.slider-row {
+    display: flex;
+    align-items: center;
+    gap: 1rem;
+}
+
+.slider-row label {
+    min-width: 80px;
+    font-size: 0.9rem;
+    font-weight: 500;
+}
+
+.slider {
+    flex: 1;
+    height: 6px;
+    -webkit-appearance: none;
+    appearance: none;
+    background: var(--code-bg);
+    border-radius: 3px;
+}
+
+.slider::-webkit-slider-thumb {
+    -webkit-appearance: none;
+    appearance: none;
+    width: 18px;
+    height: 18px;
+    background: var(--inline-code-bg);
+    border-radius: 50%;
+    cursor: pointer;
+    border: 1px solid var(--code-border);
+}
+
+.slider::-moz-range-thumb {
+    width: 18px;
+    height: 18px;
+    background: var(--inline-code-bg);
+    border-radius: 50%;
+    cursor: pointer;
+    border: 1px solid var(--code-border);
+}
+
+.slider-value {
+    min-width: 40px;
+    font-family: 'Monaco', 'Menlo', monospace;
+    font-size: 0.85rem;
+    color: var(--text-secondary);
+}
+
+/* Piano Roll */
+.piano-roll-section {
+    padding: 1rem 0;
+}
+
+.piano-roll-section.hidden {
+    display: none !important;
+}
+
+.piano-roll-container {
+    background: var(--code-bg);
+    border: 1px solid var(--code-border);
+    border-radius: 4px;
+    overflow-x: auto;
+}
+
+.piano-roll-grid {
+    display: grid;
+    grid-template-columns: 80px repeat(16, 1fr);
+    gap: 1px;
+    padding: 4px;
+    min-width: 400px;
+}
+
+.piano-roll-cell {
+    padding: 0.35rem 0.25rem;
+    font-size: 0.7rem;
+    font-family: 'Monaco', 'Menlo', monospace;
+    font-weight: 500;
+    text-align: center;
+}
+
+.piano-roll-cell.header {
+    background: var(--border-color);
+    font-weight: 600;
+}
+
+.piano-roll-cell.active {
+    background: var(--inline-code-bg);
+    color: var(--inline-code-text);
+}
+
+.piano-roll-cell.rest {
+    background: transparent;
 }
 
 .btn-copy {
@@ -378,7 +513,7 @@ footer {
     }
 
     header h1 {
-        font-size: 1.75rem;
+        font-size: 1.5rem;
     }
 
     .upload-area {
