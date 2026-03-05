@@ -225,12 +225,20 @@ The LLM receives the primitives and a DnB-specific system prompt:
 
 ## Web UI Features
 
-- **Upload**: Drag & drop PDB (.pdb, .ent, .cif), max 10MB
+### Step-by-Step Workflow
+
+1. **Step 1: Upload PDB** — Drag & drop (.pdb, .ent, .cif), max 10MB
+2. **Step 2: Protein Function** — Click "Find the function, find the beat" to search via SERPAPI (Google). Shows top 3 results. Select one as your song-generating instruction.
+3. **Continue the journey** — Generates an orchestration instruction (anthropomorphizing the protein, poetic interpretation, musical metaphors, technical guidance). Editable before Generate.
+4. **Step 3: Genre & Tonal Options** — Auto-populated from AI when you select a function. Edit as needed.
+5. **Step 4: Generate** — Strudel code via LLM, using orchestration instruction + beat templates + protein mapping.
+6. **Step 5: Copy to Strudel** — Copy code to [strudel.cc](https://strudel.cc)
+
+### Other Features
+
 - **Map**: Automatic deterministic mapping on upload
-- **Generate (LLM)**: Non-streaming, full response
 - **Generate (Stream)**: SSE streaming from Compound API
 - **Piano Roll**: Visual grid of primitives (layers × 16 steps)
-- **Intensity Sliders**: Kick, Snare, Hi-Hats, Energy (0–100%)
 - **Assemble**: Sliders update gain; re-assemble without LLM
 
 ---
@@ -240,6 +248,9 @@ The LLM receives the primitives and a DnB-specific system prompt:
 | Endpoint | Method | Description |
 |----------|--------|-------------|
 | `/api/upload` | POST | Upload PDB file (multipart) |
+| `/api/protein-function` | POST | Fetch protein function via SERPAPI (top 3 results) |
+| `/api/infer-beat-design` | POST | Infer genre/BPM/key/melodic from function text |
+| `/api/generate-orchestration-instruction` | POST | Generate orchestration instruction (anthropomorphic + poetic) |
 | `/api/map` | POST | Map PDB → primitives JSON |
 | `/api/assemble` | POST | Assemble Strudel from primitives + sliders |
 | `/api/generate` | POST | Generate Strudel via LLM (non-streaming) |
@@ -250,9 +261,10 @@ The LLM receives the primitives and a DnB-specific system prompt:
 ## Setup
 
 1. Set `GROQ_API_KEY` in `.env`
-2. Build: `cargo build --release --package prodnb-web`
-3. Run: `cargo run --package prodnb-web`
-4. Open `http://127.0.0.1:8080`
+2. Set `SERP_API_Key` in `.env` (for protein function lookup)
+3. Build: `cargo build --release --package prodnb-web`
+4. Run: `cargo run --package prodnb-web`
+5. Open `http://127.0.0.1:8080`
 
 ---
 
@@ -268,7 +280,8 @@ ProDnB/
 │   │   └── framework.rs  # LLM framework (primitives + features)
 │   └── ...
 ├── prodnb-web/           # Web server
-│   ├── strudel_knowledge.md  # Local knowledge base for LLM (from strudel.cc, strudelmarket.com)
+│   ├── strudel_knowledge.md  # Local knowledge base for LLM
+│   ├── beat_templates.md     # Beat templates (liquid, acid, flamenco, etc.) for blending
 │   ├── src/handlers.rs   # API + DnB system prompt
 │   ├── templates/
 │   └── static/
@@ -277,7 +290,24 @@ ProDnB/
 
 ## Strudel Knowledge Base
 
-`prodnb-web/strudel_knowledge.md` is a local reference compiled from the [Strudel.cc](https://strudel.cc) docs, [strudel cheatsheet](https://eggg.uk/strudel/cheatsheet/), and [Strudel Patterns](https://www.strudelmarket.com/). It is embedded in the LLM system prompt so generated code always follows valid syntax and common DnB patterns.
+`prodnb-web/strudel_knowledge.md` is a local reference for the LLM. It includes:
+
+- **Critical syntax**: In Strudel JS mode, only the last evaluated expression plays. Build layers as `const`, then output ONE `stack(drums, bass, pad, lead)`.
+- **Euclidean rhythms**: `bd(5,8)` not `(5,8)bd`
+- **Drum samples**: bd, sd, hh, cp, rim, perc, etc.
+
+`prodnb-web/beat_templates.md` provides proven beat patterns (Deep Liquid, Acid/303, Flamenco, Drop/Tension) that the LLM blends and adapts for unique arrangements.
+
+## Orchestration Instruction
+
+When you "Continue the journey," the LLM generates an orchestration instruction that blends:
+
+1. **Anthropomorphizing** — e.g. hemoglobin = "oxygen carrier that fires energy into the system"
+2. **Poetic interpretation** — evocative, metaphorical language
+3. **Musical metaphors** — transport → "energy surges", binding/release → "tension and release"
+4. **Technical guidance** — BPM, rhythm feel, bass character, drop structure
+
+The instruction is editable before Generate and drives the Strudel.cc code generation.
 
 ---
 

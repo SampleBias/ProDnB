@@ -23,6 +23,8 @@ pub struct UploadResponse {
     chain_count: Option<usize>,
     residue_count: Option<usize>,
     atom_count: Option<usize>,
+    pdb_id: Option<String>,
+    title: Option<String>,
 }
 
 /// Request structure for Strudel generation
@@ -41,6 +43,12 @@ pub struct GenerateRequest {
     pub octave: Option<u8>,
     #[serde(default)]
     pub melodic: Option<bool>,
+    /// When set, LLM infers genre/speed/harmony/drop from this function narrative
+    #[serde(default)]
+    pub selected_function: Option<String>,
+    /// User-editable orchestration instruction (from "Continue the journey"). Takes precedence over selected_function for code gen.
+    #[serde(default)]
+    pub orchestration_instruction: Option<String>,
 }
 
 /// Response structure for Strudel generation (streaming)
@@ -64,12 +72,300 @@ pub async fn api_info() -> impl actix_web::Responder {
         "status": "ok",
         "endpoints": [
             "POST /api/upload",
+            "POST /api/protein-function",
+            "POST /api/infer-beat-design",
+            "POST /api/generate-orchestration-instruction",
             "POST /api/map",
             "POST /api/assemble",
             "POST /api/generate",
             "POST /api/generate/stream"
         ]
     }))
+}
+
+/// Request for protein function lookup
+#[derive(Debug, Deserialize)]
+pub struct ProteinFunctionRequest {
+    pub file_path: String,
+}
+
+/// Single function result from SERPAPI
+#[derive(Debug, Serialize)]
+pub struct FunctionResult {
+    pub title: String,
+    pub snippet: String,
+}
+
+/// Response for protein function lookup
+#[derive(Debug, Serialize)]
+pub struct ProteinFunctionResponse {
+    pub pdb_id: Option<String>,
+    pub title: Option<String>,
+    pub functions: Vec<FunctionResult>,
+}
+
+/// Fetch protein biological function via SERPAPI
+pub async fn protein_function(
+    req: web::Json<ProteinFunctionRequest>,
+) -> Result<HttpResponse, Error> {
+    let protein = Protein::load_from_file(&req.file_path).map_err(|e| {
+        log::error!("Failed to load protein: {}", e);
+        error::ErrorBadRequest(format!("Failed to load PDB file: {}", e))
+    })?;
+
+    let pdb_id = protein.metadata.pdb_id.clone();
+    let title = protein.metadata.title.clone();
+
+    let query = match (&pdb_id, &title) {
+        (Some(id), _) => format!("PDB {} protein biological function", id),
+        (_, Some(t)) if !t.is_empty() => format!("{} protein biological function", t),
+        _ => {
+            return Ok(HttpResponse::Ok().json(ProteinFunctionResponse {
+                pdb_id: None,
+                title: None,
+                functions: vec![],
+            }));
+        }
+    };
+
+    let api_key = std::env::var("SERP_API_Key").map_err(|_| {
+        error::ErrorInternalServerError("SERP_API_Key not set in .env")
+    })?;
+
+    let url = format!(
+        "https://serpapi.com/search?engine=google&q={}&api_key={}",
+        urlencoding::encode(&query),
+        api_key
+    );
+
+    let client = reqwest::Client::builder()
+        .timeout(std::time::Duration::from_secs(15))
+        .build()
+        .map_err(|e| error::ErrorInternalServerError(format!("HTTP client error: {}", e)))?;
+
+    let response = client.get(&url).send().await.map_err(|e| {
+        log::error!("SERPAPI request failed: {}", e);
+        error::ErrorInternalServerError(format!("SERPAPI request failed: {}", e))
+    })?;
+
+    let mut functions = Vec::new();
+    if response.status().is_success() {
+        let json: serde_json::Value = response.json().await.map_err(|e| {
+            log::error!("SERPAPI parse error: {}", e);
+            error::ErrorInternalServerError("Failed to parse SERPAPI response")
+        })?;
+        if let Some(organic) = json["organic_results"].as_array() {
+            for r in organic.iter().take(3) {
+                let title = r["title"].as_str().unwrap_or("").to_string();
+                let snippet = r["snippet"].as_str().unwrap_or("").to_string();
+                if !title.is_empty() || !snippet.is_empty() {
+                    functions.push(FunctionResult { title, snippet });
+                }
+            }
+        }
+    }
+
+    Ok(HttpResponse::Ok().json(ProteinFunctionResponse {
+        pdb_id,
+        title,
+        functions,
+    }))
+}
+
+/// Request for beat design inference
+#[derive(Debug, Deserialize)]
+pub struct InferBeatDesignRequest {
+    pub selected_function: String,
+}
+
+/// Inferred beat design params from LLM
+#[derive(Debug, Serialize, Deserialize)]
+pub struct InferredBeatDesign {
+    pub genre: String,
+    pub bpm: u16,
+    pub key: Option<String>,
+    pub melodic: bool,
+}
+
+/// Request for orchestration instruction generation
+#[derive(Debug, Deserialize)]
+pub struct GenerateOrchestrationRequest {
+    pub selected_function: String,
+    #[serde(default)]
+    pub genre: Option<String>,
+    #[serde(default)]
+    pub key: Option<String>,
+    #[serde(default)]
+    pub melodic: Option<bool>,
+}
+
+/// Generate orchestration instruction from selection summary
+pub async fn generate_orchestration_instruction(
+    req: web::Json<GenerateOrchestrationRequest>,
+) -> Result<HttpResponse, Error> {
+    match generate_orchestration_from_summary(&req.selected_function, req.genre.as_deref(), req.key.as_deref(), req.melodic).await {
+        Ok(instruction) => Ok(HttpResponse::Ok().json(serde_json::json!({ "instruction": instruction }))),
+        Err(e) => {
+            log::error!("Generate orchestration failed: {}", e);
+            Ok(HttpResponse::InternalServerError().json(serde_json::json!({
+                "error": format!("{}", e)
+            })))
+        }
+    }
+}
+
+/// Internal: call Groq to generate orchestration instruction from summary
+async fn generate_orchestration_from_summary(
+    summary: &str,
+    genre: Option<&str>,
+    key: Option<&str>,
+    melodic: Option<bool>,
+) -> Result<String> {
+    let api_key = std::env::var("GROQ_API_KEY").context("GROQ_API_KEY not set")?;
+
+    let recs = [
+        genre.map(|g| format!("Genre: {}", g)),
+        key.map(|k| format!("Key: {}", k)),
+        melodic.map(|m| format!("Melodic layers: {}", m)),
+    ]
+    .into_iter()
+    .flatten()
+    .collect::<Vec<_>>()
+    .join(". ");
+
+    let prompt = format!(
+        r#"Given this protein function summary, write an orchestration instruction for an LLM that will generate Drum & Bass Strudel.cc code.
+
+Summary: {}
+
+Recommendations: {}
+
+Your instruction must blend FOUR elements in one flowing paragraph:
+
+1. ANTHROPOMORPHIZE the protein — give it a role, purpose, personality. Example: hemoglobin (HGB) = "the oxygen carrier that fires energy into the system"; a kinase = "the molecular switch that ignites cascades of activity"; an enzyme = "the catalyst that transforms stillness into motion."
+
+2. POETIC INTERPRETATION — describe what the protein does in evocative, metaphorical language. Example: "pulses of oxygen moving through the body like rhythmic waves"; "a trigger that ignites chains of reactions."
+
+3. MUSICAL METAPHORS — translate the biological role into musical imagery that guides the arrangement. Example: oxygen transport → "energy surges in the bass, rhythmic pulses like delivery"; binding/release → "tension and release, build and drop"; cascades → "layers that build and evolve over time."
+
+4. TECHNICAL GUIDANCE — include concrete steps: BPM range, rhythm feel (breakbeat, 2-step, etc.), bass character (acid, deep, modulated), melodic approach (pads, lead, or sparse), drop structure (filter sweeps, cut-and-unleash, etc.).
+
+Write one rich paragraph (4-8 sentences) that weaves all four together. The result should inspire Strudel.cc code generation with both poetic feeling and practical direction. Output ONLY the instruction text, no preamble."#,
+        summary,
+        if recs.is_empty() { "None" } else { &recs }
+    );
+
+    let client = reqwest::Client::builder()
+        .timeout(std::time::Duration::from_secs(30))
+        .build()
+        .context("HTTP client")?;
+
+    let body = serde_json::json!({
+        "model": "groq/compound",
+        "messages": [{"role": "user", "content": prompt}],
+        "max_tokens": 768,
+        "temperature": 0.6
+    });
+
+    let response = client
+        .post("https://api.groq.com/openai/v1/chat/completions")
+        .header("Content-Type", "application/json")
+        .header("Authorization", format!("Bearer {}", api_key))
+        .json(&body)
+        .send()
+        .await
+        .context("Groq request")?;
+
+    if !response.status().is_success() {
+        let text = response.text().await.unwrap_or_default();
+        anyhow::bail!("Groq API error: {}", text);
+    }
+
+    let json: serde_json::Value = response.json().await.context("Parse response")?;
+    let content = json["choices"][0]["message"]["content"]
+        .as_str()
+        .ok_or_else(|| anyhow::anyhow!("No content in response"))?
+        .trim()
+        .to_string();
+
+    Ok(content)
+}
+
+/// Infer genre/speed/harmony/drop from protein function narrative
+pub async fn infer_beat_design(
+    req: web::Json<InferBeatDesignRequest>,
+) -> Result<HttpResponse, Error> {
+    match infer_beat_design_from_function(&req.selected_function).await {
+        Ok(inferred) => Ok(HttpResponse::Ok().json(inferred)),
+        Err(e) => {
+            log::error!("Infer beat design failed: {}", e);
+            Ok(HttpResponse::InternalServerError().json(serde_json::json!({
+                "error": format!("{}", e)
+            })))
+        }
+    }
+}
+
+/// Internal helper: call Groq to infer genre/bpm/key/melodic from function text
+async fn infer_beat_design_from_function(function_text: &str) -> Result<InferredBeatDesign> {
+    let api_key = std::env::var("GROQ_API_KEY").context("GROQ_API_KEY not set")?;
+
+    let prompt = format!(
+        r#"Given this song-generating instruction (defines the feeling and journey the listener will experience), infer Drum & Bass beat design parameters.
+
+Instruction: {}
+
+Respond with ONLY valid JSON (no markdown, no explanation):
+{{"genre": "liquid"|"jump_up"|"neurofunk"|"dancefloor"|"jungle", "bpm": 160-185, "key": "C"|"Am"|"Dm"|"Em"|"Gm"|etc or null, "melodic": true|false}}
+
+Genre mapping: liquid=soulful/melodic, jump_up=high-energy/wobble, neurofunk=dark/techy, dancefloor=anthemic, jungle=breakbeat-heavy."#,
+        function_text
+    );
+
+    let client = reqwest::Client::builder()
+        .timeout(std::time::Duration::from_secs(30))
+        .build()
+        .context("HTTP client")?;
+
+    let body = serde_json::json!({
+        "model": "groq/compound",
+        "messages": [
+            {"role": "user", "content": prompt}
+        ],
+        "max_tokens": 256,
+        "temperature": 0.3
+    });
+
+    let response = client
+        .post("https://api.groq.com/openai/v1/chat/completions")
+        .header("Content-Type", "application/json")
+        .header("Authorization", format!("Bearer {}", api_key))
+        .json(&body)
+        .send()
+        .await
+        .context("Groq request")?;
+
+    if !response.status().is_success() {
+        let text = response.text().await.unwrap_or_default();
+        anyhow::bail!("Groq API error: {}", text);
+    }
+
+    let json: serde_json::Value = response.json().await.context("Parse response")?;
+    let content = json["choices"][0]["message"]["content"]
+        .as_str()
+        .ok_or_else(|| anyhow::anyhow!("No content in response"))?
+        .trim();
+
+    let content = content
+        .trim_start_matches("```json")
+        .trim_start_matches("```")
+        .trim_end_matches("```")
+        .trim();
+
+    let inferred: InferredBeatDesign = serde_json::from_str(content)
+        .context("Parse inferred JSON")?;
+
+    Ok(inferred)
 }
 
 /// Handle PDB file upload
@@ -142,6 +438,8 @@ pub async fn upload_pdb(mut payload: Multipart) -> Result<HttpResponse, Error> {
                     chain_count: Some(protein.chain_count()),
                     residue_count: Some(protein.residue_count()),
                     atom_count: Some(protein.atom_count()),
+                    pdb_id: protein.metadata.pdb_id.clone(),
+                    title: protein.metadata.title.clone(),
                 };
                 Ok(HttpResponse::Ok().json(response))
             }
@@ -174,9 +472,11 @@ pub async fn generate_strudel(
             error::ErrorBadRequest(format!("Failed to load PDB file: {}", e))
         })?;
 
-    // Build framework for LLM (with genre params)
-    let bpm = req.bpm.unwrap_or(174);
-    let genre_params = build_genre_params(&req);
+    // Build framework for LLM (with genre params; infer from selected_function if set)
+    let (bpm, genre_params) = resolve_genre_params(&req).await.map_err(|e| {
+        log::error!("Failed to resolve genre params: {}", e);
+        error::ErrorInternalServerError(format!("{}", e))
+    })?;
     let framework = ProteinFramework::from_protein_with_params(&protein, bpm, genre_params.as_ref())
         .map_err(|e| {
             log::error!("Failed to build framework: {}", e);
@@ -192,7 +492,8 @@ pub async fn generate_strudel(
     log::info!("Framework size: {} bytes", framework_json.len());
 
     // Call LLM API
-    match call_groq_api(&framework_json).await {
+    let instruction = req.orchestration_instruction.as_deref().or(req.selected_function.as_deref());
+    match call_groq_api(&framework_json, instruction).await {
         Ok(strudel_code) => {
             log::info!("Generated {} chars of Strudel code", strudel_code.len());
             Ok(HttpResponse::Ok().json(serde_json::json!({
@@ -228,6 +529,24 @@ fn build_genre_params(req: &GenerateRequest) -> Option<GenreParams> {
     Some(params)
 }
 
+/// Resolve (bpm, genre_params) from request. When selected_function is set and no explicit genre, infers via LLM.
+async fn resolve_genre_params(req: &GenerateRequest) -> Result<(u16, Option<GenreParams>)> {
+    if req.genre.is_none() && req.key.is_none() {
+        if let Some(ref func) = req.selected_function {
+            let inferred = infer_beat_design_from_function(func).await?;
+            let genre = DnBGenre::from_str(&inferred.genre).unwrap_or(DnBGenre::Neurofunk);
+            let mut params = GenreParams::new(genre);
+            params.key = inferred.key.clone();
+            params.melodic = inferred.melodic;
+            params.octave = Some(3);
+            return Ok((inferred.bpm, Some(params)));
+        }
+    }
+    let bpm = req.bpm.unwrap_or(174);
+    let params = build_genre_params(req);
+    Ok((bpm, params))
+}
+
 /// Map PDB to primitives (stage 1, deterministic). Returns JSON for piano roll.
 pub async fn map_primitives(
     req: web::Json<GenerateRequest>,
@@ -244,8 +563,10 @@ pub async fn map_primitives(
         }
     };
 
-    let bpm = req.bpm.unwrap_or(174);
-    let genre_params = build_genre_params(&req);
+    let (bpm, genre_params) = resolve_genre_params(&req).await.map_err(|e| {
+        log::error!("Failed to resolve genre params: {}", e);
+        error::ErrorInternalServerError(format!("{}", e))
+    })?;
     let mapped = match protein_to_primitives(&protein, bpm, genre_params.as_ref()) {
         Ok(m) => m,
         Err(e) => {
@@ -309,8 +630,10 @@ pub async fn generate_strudel_stream(
             error::ErrorBadRequest(format!("Failed to load PDB file: {}", e))
         })?;
 
-    let bpm = req.bpm.unwrap_or(174);
-    let genre_params = build_genre_params(&req);
+    let (bpm, genre_params) = resolve_genre_params(&req).await.map_err(|e| {
+        log::error!("Failed to resolve genre params: {}", e);
+        error::ErrorInternalServerError(format!("{}", e))
+    })?;
     let framework = ProteinFramework::from_protein_with_params(&protein, bpm, genre_params.as_ref())
         .map_err(|e| {
             log::error!("Failed to build framework: {}", e);
@@ -323,8 +646,15 @@ pub async fn generate_strudel_stream(
             error::ErrorInternalServerError(format!("Failed to serialize: {}", e))
         })?;
 
+    let instruction = req.orchestration_instruction.as_ref()
+        .or(req.selected_function.as_ref());
+    let instruction_note = instruction
+        .map(|s| format!("\n\nORCHESTRATION INSTRUCTION (how to arrange drums, bass, melodic layers):\n{}\n\nFollow this instruction. Blend beat templates. Keep protein mapping intact but adlib on arrangement.", s))
+        .unwrap_or_default();
+
     let user_content = format!(
-        "Arrange these pre-mapped Strudel primitives into Drum & Bass Strudel code.\n\nFramework (primitives with pattern, gain, layer):\n{}\n\nOutput ONLY valid Strudel JS code. NO d1 $, NO stack([...]). Use stack(p1, p2, p3) variadic. For intensity use .gain(slider(X, 0, 1)). Format: setcps(0.725) then stack(s(\"...\").gain(slider(0.9, 0, 1)), s(\"...\"), ...).",
+        "Arrange these pre-mapped Strudel primitives into Drum & Bass Strudel code.{}Framework (primitives with pattern, gain, layer):\n{}\n\nOutput a SUBSTANTIAL arrangement. CRITICAL: Build each layer as const (const drums = ..., const bass = ..., const pad = ..., const lead = ...), then output ONE final stack(drums, bass, pad, lead) — in Strudel JS mode only the last expression plays, so multiple separate stack() calls will NOT work. Include setcps, register() if using acidenv, drums, bass, pads, lead. Use ._pianoroll() on melodic layers. Output ONLY valid Strudel JS code. NO d1 $. Blend elements from the beat templates.",
+        instruction_note,
         framework_json
     );
 
@@ -355,7 +685,7 @@ pub async fn generate_strudel_stream(
                 {"role": "system", "content": dnb_system_prompt()},
                 {"role": "user", "content": user_content}
             ],
-            "max_tokens": 2048,
+            "max_tokens": 4096,
             "temperature": 0.4,
             "stream": true
         });
@@ -456,29 +786,44 @@ pub async fn generate_strudel_stream(
 /// Strudel knowledge base - local reference for clean executable code
 const STRUDEL_KNOWLEDGE: &str = include_str!("../strudel_knowledge.md");
 
-/// DnB arrangement system prompt for LLM (includes knowledge base)
+/// Beat templates for inspiration - blend and mix for complete works
+const BEAT_TEMPLATES: &str = include_str!("../beat_templates.md");
+
+/// DnB arrangement system prompt for LLM (includes knowledge base + beat templates)
 fn dnb_system_prompt() -> String {
     format!(r#"You are a Drum & Bass music arranger for Strudel.cc. Use this knowledge base for clean, executable code:
 
 {}
+
+---
+
+BEAT TEMPLATES — blend and mix these for inspiration. Adapt to the framework and genre:
+{}
+
 ---
 
 RULES:
 - Use ONLY the provided primitives from the framework
+- CRITICAL: In Strudel JS mode, ONLY THE LAST EVALUATED EXPRESSION PLAYS. Multiple separate stack() calls will NOT all play — each replaces the previous. You MUST: (1) build each layer as const (e.g. const drums = stack(...), const bass = n(...)), (2) output ONE final stack(drums, bass, pad, lead) at the end. This is the ONLY way all layers play together.
+- BLEND elements from the beat templates above — mix kicks, basses, pads, percussion from different templates for unique results
 - If framework has genre, key, octave, melodic: match that subgenre style (liquid/jump_up/neurofunk/dancefloor/jungle)
-- Strudel default REPL is JS: NO d1 $, NO stack([...]). Use stack(p1, p2, p3) variadic.
-- Output: setcps(0.725) then stack(s(\"...\").gain(slider(X, 0, 1)), ...) for intensity
-- For melodic layers: n(\"0 2 4 6\").scale(\"C:minor\").s(\"sawtooth\").gain(slider(...))
-- Piano roll = patterns in stack. No variables, no markdown"#, STRUDEL_KNOWLEDGE)
+- Strudel default REPL is JS: NO d1 $, NO stack([...]). Use const for layers, then ONE stack(layer1, layer2, ...).
+- For melodic layers: n(\"0 2 4 6\").scale(\"C:minor\").s(\"sawtooth\").gain(slider(...)). Add ._pianoroll() if desired.
+- No markdown, no comments that break parsing."#, STRUDEL_KNOWLEDGE, BEAT_TEMPLATES)
 }
 
 /// Call Groq API with protein framework to generate Strudel code
-async fn call_groq_api(framework_json: &str) -> Result<String> {
+async fn call_groq_api(framework_json: &str, instruction: Option<&str>) -> Result<String> {
     let api_key = std::env::var("GROQ_API_KEY")
         .context("GROQ_API_KEY environment variable not set")?;
 
+    let instruction_note = instruction
+        .map(|s| format!("\n\nORCHESTRATION INSTRUCTION (how to arrange drums, bass, melodic layers):\n{}\n\nFollow this instruction. Blend beat templates. Keep protein mapping intact but adlib on arrangement.", s))
+        .unwrap_or_default();
+
     let user_content = format!(
-        "Arrange these pre-mapped Strudel primitives into Drum & Bass Strudel code.\n\nFramework (primitives with pattern, gain, layer):\n{}\n\nOutput ONLY valid Strudel JS code. NO d1 $, NO stack([...]). Use stack(p1, p2, p3) variadic. For intensity use .gain(slider(X, 0, 1)). Format: setcps(0.725) then stack(s(\"...\").gain(slider(0.9, 0, 1)), s(\"...\"), ...).",
+        "Arrange these pre-mapped Strudel primitives into Drum & Bass Strudel code.{}Framework (primitives with pattern, gain, layer):\n{}\n\nOutput a SUBSTANTIAL arrangement. CRITICAL: Build each layer as const (const drums = ..., const bass = ..., const pad = ..., const lead = ...), then output ONE final stack(drums, bass, pad, lead) — in Strudel JS mode only the last expression plays, so multiple separate stack() calls will NOT work. Include setcps, register() if using acidenv, drums, bass, pads, lead. Use ._pianoroll() on melodic layers. Output ONLY valid Strudel JS code. NO d1 $. Blend elements from the beat templates.",
+        instruction_note,
         framework_json
     );
 
@@ -495,7 +840,7 @@ async fn call_groq_api(framework_json: &str) -> Result<String> {
             {"role": "system", "content": dnb_system_prompt()},
             {"role": "user", "content": user_content}
         ],
-        "max_tokens": 2048,
+        "max_tokens": 4096,
         "temperature": 0.4
     });
 

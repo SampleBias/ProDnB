@@ -127,6 +127,120 @@ section h2 {
     margin-top: 0.5rem;
 }
 
+/* Protein Function Section */
+.function-section {
+    padding: 0;
+}
+
+.function-section .hint {
+    margin-top: 0.5rem;
+}
+
+.function-loading {
+    font-size: 0.9rem;
+    color: var(--text-secondary);
+    margin: 0.5rem 0;
+    display: flex;
+    align-items: center;
+    gap: 0.5rem;
+}
+
+.function-loading::before {
+    content: '';
+    width: 16px;
+    height: 16px;
+    border: 2px solid var(--border-color);
+    border-top-color: var(--text-color);
+    border-radius: 50%;
+    animation: spin 0.8s linear infinite;
+}
+
+/* Step 3 disabled until Step 2 completes */
+.genre-section.step-disabled {
+    opacity: 0.6;
+    pointer-events: none;
+}
+
+.function-list {
+    display: flex;
+    flex-direction: column;
+    gap: 0.75rem;
+    margin: 1rem 0;
+}
+
+.function-card {
+    padding: 1rem;
+    border: 1px solid var(--border-color);
+    border-radius: 4px;
+    cursor: pointer;
+    transition: border-color 0.2s, background 0.2s;
+    text-align: left;
+}
+
+.function-card:hover {
+    border-color: var(--text-color);
+    background: var(--code-bg);
+}
+
+.function-card.selected {
+    border-color: var(--code-border);
+    background: var(--code-bg);
+}
+
+.function-card-title {
+    font-weight: 600;
+    font-size: 0.95rem;
+    margin-bottom: 0.35rem;
+}
+
+.function-card-snippet {
+    font-size: 0.85rem;
+    color: var(--text-secondary);
+    line-height: 1.5;
+}
+
+.btn-sm {
+    padding: 0.4rem 0.75rem;
+    font-size: 0.85rem;
+}
+
+.btn-sm + .btn-sm {
+    margin-left: 0.5rem;
+}
+
+.continue-section {
+    margin-top: 1.5rem;
+    padding-top: 1rem;
+    border-top: 1px solid var(--border-color);
+}
+
+.orchestration-editor {
+    margin-top: 1rem;
+}
+
+.orchestration-editor label {
+    display: block;
+    font-size: 0.9rem;
+    font-weight: 500;
+    margin-bottom: 0.5rem;
+}
+
+.orchestration-editor textarea {
+    width: 100%;
+    min-height: 120px;
+    padding: 0.75rem 1rem;
+    font-size: 0.9rem;
+    font-family: inherit;
+    border: 1px solid var(--border-color);
+    border-radius: 4px;
+    resize: vertical;
+}
+
+.orchestration-editor textarea:focus {
+    outline: none;
+    border-color: var(--text-color);
+}
+
 /* Genre & Tonal Options */
 .genre-section {
     padding: 0;
@@ -248,6 +362,11 @@ section h2 {
 .btn-primary:hover:not(:disabled) {
     background: var(--primary-hover);
     border-color: var(--primary-hover);
+}
+
+.btn-find-function {
+    width: auto;
+    margin-bottom: 0.5rem;
 }
 
 .btn-secondary {

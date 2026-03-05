@@ -41,9 +41,34 @@
                 </div>
             </section>
 
+            <!-- Protein Function (Step 2 - click to fetch via SERPAPI) -->
+            <section class="function-section" id="functionSection">
+                <h2>Step 2: Protein Function</h2>
+                <p class="hint" id="functionHint">Upload a PDB file above, then click below to search. Select a result as your <strong>song-generating instruction</strong> — it defines the feeling and journey. Step 3 will auto-populate with AI recommendations.</p>
+                <button type="button" class="btn btn-primary btn-find-function" id="findFunctionBtn" disabled>
+                    Find the function, find the beat
+                </button>
+                <div id="functionLoading" class="function-loading hidden">Searching for protein function...</div>
+                <div id="functionList" class="function-list"></div>
+                <button type="button" class="btn btn-secondary btn-sm hidden" id="clearFunction">Clear selection</button>
+
+                <!-- Continue the journey - generates editable orchestration instruction -->
+                <div id="continueSection" class="continue-section hidden">
+                    <button type="button" class="btn btn-primary btn-find-function" id="continueJourneyBtn">
+                        Continue the journey
+                    </button>
+                    <div id="orchestrationLoading" class="function-loading hidden">Generating orchestration instruction...</div>
+                    <div id="orchestrationEditor" class="orchestration-editor hidden">
+                        <label for="orchestrationInstruction">Orchestration instruction (edit before Generate)</label>
+                        <textarea id="orchestrationInstruction" rows="5" placeholder="The instruction will appear here after you click Continue the journey. Edit to refine how the beat should be arranged."></textarea>
+                    </div>
+                </div>
+            </section>
+
             <!-- Genre & Tonal Options -->
-            <section class="genre-section">
-                <h2>Step 2: Genre & Tonal Options</h2>
+            <section class="genre-section" id="genreSection">
+                <h2>Step 3: Genre & Tonal Options</h2>
+                <p class="hint">Populated from AI when you select a function above. Edit as needed.</p>
                 <div class="genre-options">
                     <div class="genre-row">
                         <label for="genreSelect">Subgenre</label>
@@ -94,7 +119,7 @@
 
             <!-- Generate Section -->
             <section class="generate-section">
-                <h2>Step 3: Generate Strudel Code</h2>
+                <h2>Step 4: Generate Strudel Code</h2>
                 <button class="btn btn-primary" id="generateBtn" disabled>
                     <span class="btn-text">Generate</span>
                     <span class="btn-loading hidden">Generating...</span>
@@ -105,7 +130,7 @@
             <!-- Output Section -->
             <section class="output-section">
                 <div class="section-header">
-                    <h2>Step 4: Copy to Strudel</h2>
+                    <h2>Step 5: Copy to Strudel</h2>
                     <button class="btn btn-copy" id="copyBtn" disabled>
                         <svg class="copy-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor">
                             <rect x="9" y="9" width="13" height="13" rx="2" ry="2"/>
@@ -132,7 +157,7 @@
 
         <footer>
             <p>ProDnB uses protein structures to generate Drum & Bass patterns via Groq's Compound AI</p>
-            <p class="footer-note">Requires GROQ_API_KEY environment variable</p>
+            <p class="footer-note">Requires GROQ_API_KEY. SERP_API_Key for protein function lookup.</p>
         </footer>
     </div>
 

@@ -5,6 +5,9 @@ class ProDnBApp {
         this.uploadedFilePath = null;
         this.proteinInfo = null;
         this.mappedPrimitives = null;  // { tempo, primitives, rhythm_seed, chain_lengths, element_counts }
+        this.proteinFunctions = [];    // [{ title, snippet }]
+        this.selectedFunction = null;  // selected snippet text for infer-beat-design
+        this.orchestrationInstruction = null;  // user-editable orchestration prompt for code gen
 
         this.initElements();
         this.initEventListeners();
@@ -35,6 +38,20 @@ class ProDnBApp {
         this.copyBtn = document.getElementById('copyBtn');
         this.clearBtn = document.getElementById('clearBtn');
 
+        // Function section (Step 2)
+        this.functionSection = document.getElementById('functionSection');
+        this.functionHint = document.getElementById('functionHint');
+        this.findFunctionBtn = document.getElementById('findFunctionBtn');
+        this.functionLoading = document.getElementById('functionLoading');
+        this.functionList = document.getElementById('functionList');
+        this.clearFunctionBtn = document.getElementById('clearFunction');
+        this.continueSection = document.getElementById('continueSection');
+        this.continueJourneyBtn = document.getElementById('continueJourneyBtn');
+        this.orchestrationLoading = document.getElementById('orchestrationLoading');
+        this.orchestrationEditor = document.getElementById('orchestrationEditor');
+        this.orchestrationInstructionEl = document.getElementById('orchestrationInstruction');
+        this.genreSection = document.getElementById('genreSection');
+
         // Status message
         this.statusMessage = document.getElementById('statusMessage');
     }
@@ -44,12 +61,22 @@ class ProDnBApp {
         const key = this.keySelect?.value || '';
         const octave = this.octaveInput?.value ? parseInt(this.octaveInput.value, 10) : null;
         const melodic = this.melodicCheck?.checked || false;
-        return {
+        const orchestration = (this.orchestrationInstructionEl?.value || this.orchestrationInstruction || '').trim();
+        this.orchestrationInstruction = orchestration || null;
+
+        const params = {
             ...(genre && { genre }),
             ...(key && { key }),
             ...(octave >= 2 && octave <= 5 && { octave }),
             ...(melodic && { melodic })
         };
+        if (this.selectedFunction) {
+            params.selected_function = this.selectedFunction;
+        }
+        if (this.orchestrationInstruction) {
+            params.orchestration_instruction = this.orchestrationInstruction;
+        }
+        return params;
     }
 
     initEventListeners() {
@@ -112,6 +139,54 @@ class ProDnBApp {
         this.clearBtn.addEventListener('click', () => {
             this.clearOutput();
         });
+
+        // Find function button – SERPAPI search
+        if (this.findFunctionBtn) {
+            this.findFunctionBtn.addEventListener('click', () => this.handleFindFunction());
+        }
+
+        // Continue the journey – generate orchestration instruction
+        if (this.continueJourneyBtn) {
+            this.continueJourneyBtn.addEventListener('click', () => this.handleContinueJourney());
+        }
+
+        // Sync orchestration textarea to state before Generate
+        if (this.orchestrationInstructionEl) {
+            this.orchestrationInstructionEl.addEventListener('input', () => {
+                this.orchestrationInstruction = this.orchestrationInstructionEl.value.trim() || null;
+            });
+        }
+
+        // Clear function selection
+        if (this.clearFunctionBtn) {
+            this.clearFunctionBtn.addEventListener('click', () => {
+                this.selectedFunction = null;
+                this.orchestrationInstruction = null;
+                if (this.orchestrationInstructionEl) this.orchestrationInstructionEl.value = '';
+                if (this.continueSection) this.continueSection.classList.add('hidden');
+                if (this.orchestrationEditor) this.orchestrationEditor.classList.add('hidden');
+                this.renderFunctionList();
+                if (this.uploadedFilePath) this.fetchMap();
+            });
+        }
+    }
+
+    async handleFindFunction() {
+        if (!this.uploadedFilePath) return;
+
+        this.setStep2Loading(true);
+        this.setStep3Enabled(false);
+        this.findFunctionBtn.disabled = true;
+
+        try {
+            await this.fetchProteinFunction();
+            this.setStep3Enabled(true);
+        } catch (e) {
+            this.showStatus('Failed to fetch protein function', 'error');
+        } finally {
+            this.setStep2Loading(false);
+            this.findFunctionBtn.disabled = false;
+        }
     }
 
     async handleFileUpload(file) {
@@ -157,11 +232,12 @@ class ProDnBApp {
 
             this.fileName.textContent = file.name;
             this.fileStats.textContent = `Chains: ${result.chain_count} | Residues: ${result.residue_count} | Atoms: ${result.atom_count}`;
-            this.generateBtn.disabled = false;
 
             this.showStatus('PDB file uploaded successfully!', 'success');
 
-            // Map to primitives (stage 1, deterministic)
+            this.findFunctionBtn.disabled = false;
+            this.setStep3Enabled(false);
+
             await this.fetchMap();
         } catch (error) {
             console.error('Upload error:', error);
@@ -232,14 +308,213 @@ class ProDnBApp {
         }
     }
 
+    setStep2Loading(loading) {
+        if (this.functionHint) {
+            this.functionHint.classList.toggle('hidden', loading || !!this.proteinFunctions?.length);
+        }
+        if (this.findFunctionBtn) {
+            this.findFunctionBtn.classList.toggle('hidden', loading);
+        }
+        if (this.functionLoading) {
+            this.functionLoading.classList.toggle('hidden', !loading);
+            this.functionLoading.textContent = loading ? 'Searching for protein function...' : '';
+        }
+        if (this.clearFunctionBtn) {
+            this.clearFunctionBtn.classList.toggle('hidden', loading);
+        }
+    }
+
+    setStep3Enabled(enabled) {
+        this.generateBtn.disabled = !enabled;
+        if (this.genreSection) {
+            this.genreSection.classList.toggle('step-disabled', !enabled);
+        }
+    }
+
+    async fetchProteinFunction() {
+        if (!this.uploadedFilePath) return;
+
+        if (this.functionHint) this.functionHint.classList.add('hidden');
+        if (this.functionList) this.functionList.innerHTML = '';
+        this.proteinFunctions = [];
+        this.selectedFunction = null;
+
+        try {
+            const response = await fetch('/api/protein-function', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ file_path: this.uploadedFilePath })
+            });
+
+            if (!response.ok) {
+                throw new Error('Failed to fetch protein function');
+            }
+
+            const result = await response.json();
+            this.proteinFunctions = result.functions || [];
+            this.renderFunctionList();
+        } catch (error) {
+            console.warn('Protein function fetch failed:', error);
+            this.proteinFunctions = [];
+            this.renderFunctionList();
+            this.showStatus('Protein function lookup failed. Use genre options below.', 'error');
+        } finally {
+            // Step 2 loading cleared by handleFileUpload after await
+        }
+    }
+
+    renderFunctionList() {
+        if (!this.functionList) return;
+
+        this.functionList.innerHTML = '';
+        for (const fn of this.proteinFunctions) {
+            const text = [fn.title, fn.snippet].filter(Boolean).join(' — ');
+            if (!text) continue;
+
+            const card = document.createElement('button');
+            card.type = 'button';
+            card.className = 'function-card' + (this.selectedFunction === text ? ' selected' : '');
+            card.innerHTML = `
+                <div class="function-card-title">${this.escapeHtml(fn.title || 'Function')}</div>
+                <div class="function-card-snippet">${this.escapeHtml(fn.snippet || '')}</div>
+            `;
+            card.addEventListener('click', () => {
+                this.selectedFunction = text;
+                this.renderFunctionList();
+                this.showContinueSection();
+                this.fetchInferredRecommendations();
+                if (this.uploadedFilePath) this.fetchMap();
+            });
+            this.functionList.appendChild(card);
+        }
+
+        if (this.proteinFunctions.length === 0 && this.uploadedFilePath) {
+            this.functionList.innerHTML = '<p class="hint">No function descriptions found. Use genre options below.</p>';
+        }
+
+        if (this.clearFunctionBtn && this.uploadedFilePath) {
+            this.clearFunctionBtn.classList.remove('hidden');
+        }
+    }
+
+    showContinueSection() {
+        if (this.continueSection && this.selectedFunction) {
+            this.continueSection.classList.remove('hidden');
+            this.orchestrationInstruction = null;
+            if (this.orchestrationInstructionEl) this.orchestrationInstructionEl.value = '';
+            if (this.orchestrationEditor) this.orchestrationEditor.classList.add('hidden');
+        }
+    }
+
+    async handleContinueJourney() {
+        if (!this.selectedFunction) return;
+
+        if (this.orchestrationLoading) this.orchestrationLoading.classList.remove('hidden');
+        if (this.continueJourneyBtn) this.continueJourneyBtn.disabled = true;
+
+        try {
+            const genre = this.genreSelect?.value || '';
+            const key = this.keySelect?.value || '';
+            const melodic = this.melodicCheck?.checked || false;
+
+            const response = await fetch('/api/generate-orchestration-instruction', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({
+                    selected_function: this.selectedFunction,
+                    ...(genre && { genre }),
+                    ...(key && { key }),
+                    melodic
+                })
+            });
+
+            if (!response.ok) {
+                const err = await response.json().catch(() => ({}));
+                throw new Error(err.error || 'Failed to generate instruction');
+            }
+
+            const result = await response.json();
+            const instruction = result.instruction || '';
+            this.orchestrationInstruction = instruction;
+            if (this.orchestrationInstructionEl) {
+                this.orchestrationInstructionEl.value = instruction;
+            }
+            if (this.orchestrationEditor) this.orchestrationEditor.classList.remove('hidden');
+            this.showStatus('Orchestration instruction ready. Edit if needed, then Generate.', 'success');
+        } catch (error) {
+            console.error('Continue journey error:', error);
+            this.showStatus(error.message || 'Failed to generate orchestration instruction', 'error');
+        } finally {
+            if (this.orchestrationLoading) this.orchestrationLoading.classList.add('hidden');
+            if (this.continueJourneyBtn) this.continueJourneyBtn.disabled = false;
+        }
+    }
+
+    async fetchInferredRecommendations() {
+        if (!this.selectedFunction) return;
+
+        try {
+            const response = await fetch('/api/infer-beat-design', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ selected_function: this.selectedFunction })
+            });
+
+            if (!response.ok) {
+                const err = await response.json().catch(() => ({}));
+                throw new Error(err.error || 'Inference failed');
+            }
+
+            const inferred = await response.json();
+            if (this.genreSelect && inferred.genre) {
+                this.genreSelect.value = inferred.genre;
+            }
+            if (this.keySelect && inferred.key) {
+                this.keySelect.value = inferred.key;
+            }
+            if (this.melodicCheck) {
+                this.melodicCheck.checked = !!inferred.melodic;
+            }
+            if (this.octaveInput && inferred.octave) {
+                this.octaveInput.value = String(Math.min(5, Math.max(2, inferred.octave)));
+            }
+            this.showStatus(`Recommended: ${inferred.genre || 'default'} @ ${inferred.bpm || 174} BPM`, 'success');
+        } catch (error) {
+            console.warn('Could not fetch recommendations:', error);
+        }
+    }
+
+    escapeHtml(s) {
+        const div = document.createElement('div');
+        div.textContent = s;
+        return div.innerHTML;
+    }
+
     clearFileUpload() {
         this.uploadedFilePath = null;
         this.proteinInfo = null;
         this.mappedPrimitives = null;
+        this.proteinFunctions = [];
+        this.selectedFunction = null;
         this.fileInput.value = '';
         this.fileInfo.classList.add('hidden');
         this.uploadArea.classList.remove('hidden');
         this.generateBtn.disabled = true;
+        if (this.functionHint) {
+            this.functionHint.textContent = 'Upload a PDB file above, then click below to search for the protein\'s biological function via Google (SERPAPI).';
+            this.functionHint.classList.remove('hidden');
+        }
+        if (this.findFunctionBtn) {
+            this.findFunctionBtn.disabled = true;
+            this.findFunctionBtn.classList.remove('hidden');
+        }
+        if (this.functionLoading) this.functionLoading.classList.add('hidden');
+        if (this.functionList) this.functionList.innerHTML = '';
+        if (this.clearFunctionBtn) this.clearFunctionBtn.classList.add('hidden');
+        if (this.continueSection) this.continueSection.classList.add('hidden');
+        if (this.orchestrationInstructionEl) this.orchestrationInstructionEl.value = '';
+        this.orchestrationInstruction = null;
+        if (this.genreSection) this.genreSection.classList.remove('step-disabled');
     }
 
     async generateStrudel() {
