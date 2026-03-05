@@ -65,9 +65,9 @@ Each atom line provides:
 | Chain ID | 21 | Polypeptide chain | Chain count → polyrhythmic layers |
 | Residue sequence | 22-26 | Residue index | Chain length → hi-hat density |
 
-### Element-to-Sound Mapping
+### Element-to-Sound Mapping (Base)
 
-The core mapping: each chemical element maps to a Strudel drum sample.
+The base mapping: each chemical element maps to a Strudel drum sample.
 
 | PDB Element | Chemical | Strudel Sound | Rationale |
 |-------------|----------|---------------|-----------|
@@ -79,21 +79,32 @@ The core mapping: each chemical element maps to a Strudel drum sample.
 | **H** | Hydrogen | `~` (rest) | Too numerous; mapped to silence |
 | **Other** | Fe, Zn, etc. | `perc` | Miscellaneous percussion |
 
-**Implementation** (`prodnb-core/src/strudel.rs`):
+### Dynamic Element Mapping (Phases 1–3)
 
-```rust
-pub fn element_to_sound(element: &str) -> &'static str {
-    match element.to_uppercase().as_str() {
-        "C" => "bd",
-        "N" => "sd",
-        "O" => "hh",
-        "S" => "cp",
-        "P" => "rim",
-        "H" => "~",
-        _ => "perc",
-    }
-}
-```
+ProDnB uses a **dynamic mapping** algorithm for variation. Same PDB → same output (deterministic), but richer patterns.
+
+**Phase 1: Element pools, B-factor, occupancy**
+
+- **Element pools**: Each base sound has variants. C → `[bd, bd, perc]`; N → `[sd, sd, cp]`; O → `[hh, hh, oh]`. Atom index rotates within the pool.
+- **B-factor substitution**: High B-factor (> 40) = structural flexibility. ~25% of flexible atoms use a "flex" variant (e.g. bd → perc, hh → oh).
+- **Occupancy-based rest**: Very low occupancy (< 0.25) → deterministic rest (`~`) for ~33% of those atoms.
+
+**Phase 2: Residue and chain context**
+
+- **Residue-type bias**: Hydrophobic (ALA, VAL, …) → bd; Charged (ARG, LYS, …) → sd; Aromatic (PHE, TYR, …) → cp. Applied ~20% of the time for C/N/O.
+- **Chain-index rotation**: Chain 0 = default; Chain 1 = occasional bd→perc; Chain 2 = occasional hh→oh.
+
+**Phase 3: Configurable thresholds**
+
+`MappingConfig` (defaults):
+
+| Parameter | Default | Description |
+|-----------|---------|-------------|
+| `b_factor_flex_threshold` | 40 | B-factor above which flex variant may apply |
+| `occupancy_rest_threshold` | 0.25 | Occupancy below which rest may apply |
+| `occupancy_rest_mod` | 1 | Rest probability (0–2) when below threshold |
+
+**API**: `element_to_sound_dynamic(ctx, atom_index, genre, &config)` — use for rhythm seed and layered output. `Protein::all_atoms_with_context()` yields `AtomContext` (atom + residue_name, chain_id, chain_index, residue_seq).
 
 ### B-Factor Variance → Euclidean Rhythm
 
@@ -124,14 +135,16 @@ Longer polypeptide chains → denser hi-hat patterns:
 
 ### Rhythm Seed
 
-A **rhythm seed** is built by sampling atoms along the backbone:
+A **rhythm seed** is built by sampling atoms with **dynamic mapping**:
 
-1. Filter out hydrogen
-2. Sample every Nth atom (step = `atoms.len() / 24`, clamped 1–4)
-3. Take up to 24 atoms
-4. Map each element → sound, join with spaces
+1. Iterate atoms with `all_atoms_with_context()` (residue + chain info)
+2. Filter out hydrogen
+3. Sample every Nth atom (step = `atoms.len() / 24`, clamped 1–4)
+4. Take up to 24 atoms
+5. Map each via `element_to_sound_dynamic()` — pools, B-factor, occupancy, residue, chain
+6. Join with spaces
 
-Example: `"bd bd sd hh bd ~ sd cp bd hh ..."`
+Example: `"bd perc sd hh bd ~ sd cp bd oh ..."` (varied by structure)
 
 This seed is used as:
 - A structural hint for the LLM
@@ -230,7 +243,7 @@ The LLM receives the primitives and a DnB-specific system prompt:
 1. **Step 1: Upload PDB** — Drag & drop (.pdb, .ent, .cif), max 10MB
 2. **Step 2: Protein Function** — Click "Find the function, find the beat" to search via SERPAPI (Google). Shows top 3 results. Select one as your song-generating instruction.
 3. **Continue the journey** — Generates an orchestration instruction (anthropomorphizing the protein, poetic interpretation, musical metaphors, technical guidance). Editable before Generate.
-4. **Step 3: Genre & Tonal Options** — Auto-populated from AI when you select a function. Edit as needed.
+4. **Step 3: Genre & Tonal Options** — Auto-populated from AI when you select a function (subgenre, key, octave, melodic). Edit as needed.
 5. **Step 4: Generate** — Strudel code via LLM, using orchestration instruction + beat templates + protein mapping.
 6. **Step 5: Copy to Strudel** — Copy code to [strudel.cc](https://strudel.cc)
 
@@ -240,6 +253,8 @@ The LLM receives the primitives and a DnB-specific system prompt:
 - **Generate (Stream)**: SSE streaming from Compound API
 - **Piano Roll**: Visual grid of primitives (layers × 16 steps)
 - **Assemble**: Sliders update gain; re-assemble without LLM
+- **Playback fixes**: Generated code is post-processed to (1) inject `register('acidenv', ...)` when `.acidenv()` is used, (2) ensure a final `stack(drums, bass, pad, lead)` so all layers play, (3) use `triangle` for melodic synths (most reliable; sine/sawtooth can be silent)
+- **Representation key**: Every generated code includes a comment block mapping each layer (drums, bass, pad, lead) to the protein's biological function — so the DJ knows what each slider controls (e.g. "BASS: oxygen transport pulse — slider shapes delivery intensity" for hemoglobin)
 
 ---
 
@@ -287,6 +302,17 @@ ProDnB/
 │   └── static/
 └── README.md
 ```
+
+## Playback Troubleshooting
+
+If pasted code doesn't play in Strudel.cc:
+
+1. **`.acidenv is not a function`** — Strudel has no built-in acidenv. ProDnB auto-injects `register('acidenv', ...)` when the LLM uses `.acidenv()` on bass. If you still see this, add manually after `setcps()`:
+   ```javascript
+   register('acidenv', (x, pat) => pat.lpf(100).lpenv(x * 9).lps(0.2).lpd(0.12));
+   ```
+2. **Nothing plays** — In Strudel JS mode, only the last expression plays. ProDnB auto-appends `stack(drums, bass, pad, lead)` when layers are defined but no final stack. Ensure your output ends with a single `stack(...)` of all layers.
+3. **Melodic layers (n()) silent** — Sample engine works, synth engine may need a click. ProDnB uses `triangle` (Strudel's default, most reliable). If `sine`/`sawtooth` are silent, click the Strudel play area first (browser autoplay), or change `.s("sine")` to `.s("triangle")`.
 
 ## Strudel Knowledge Base
 

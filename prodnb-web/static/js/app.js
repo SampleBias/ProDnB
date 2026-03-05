@@ -470,18 +470,33 @@ class ProDnBApp {
                 this.genreSelect.value = inferred.genre;
             }
             if (this.keySelect && inferred.key) {
-                this.keySelect.value = inferred.key;
+                const key = this.normalizeKeyForDropdown(inferred.key);
+                if (this.keySelect.querySelector(`option[value="${key}"]`)) {
+                    this.keySelect.value = key;
+                }
             }
             if (this.melodicCheck) {
                 this.melodicCheck.checked = !!inferred.melodic;
             }
-            if (this.octaveInput && inferred.octave) {
-                this.octaveInput.value = String(Math.min(5, Math.max(2, inferred.octave)));
+            if (this.octaveInput) {
+                const oct = inferred.octave != null ? Math.min(5, Math.max(2, inferred.octave)) : 3;
+                this.octaveInput.value = String(oct);
             }
             this.showStatus(`Recommended: ${inferred.genre || 'default'} @ ${inferred.bpm || 174} BPM`, 'success');
         } catch (error) {
             console.warn('Could not fetch recommendations:', error);
         }
+    }
+
+    /** Normalize API key (e.g. "C:minor", "g:minor") to dropdown value ("Cm", "Gm") */
+    normalizeKeyForDropdown(key) {
+        if (!key || typeof key !== 'string') return '';
+        const k = key.trim().toLowerCase();
+        const minorMap = { 'c': 'Cm', 'd': 'Dm', 'e': 'Em', 'f': 'Fm', 'g': 'Gm', 'a': 'Am', 'b': 'Bm' };
+        const minorMatch = k.match(/^([a-g])(?:#|b)?\s*:\s*minor$/);
+        if (minorMatch) return minorMap[minorMatch[1]] || (minorMatch[1].toUpperCase() + 'm');
+        if (['am', 'bm', 'cm', 'dm', 'em', 'fm', 'gm'].includes(k)) return k.charAt(0).toUpperCase() + 'm';
+        return key;
     }
 
     escapeHtml(s) {
@@ -543,6 +558,7 @@ class ProDnBApp {
             const reader = response.body.getReader();
             const decoder = new TextDecoder();
             let code = '';
+            let headerChunk = '';
             let buffer = '';
 
             while (true) {
@@ -561,9 +577,11 @@ class ProDnBApp {
                         try {
                             const payload = JSON.parse(data);
 
-                            if (payload.chunk_type === 'chunk' && payload.content) {
+                            if (payload.chunk_type === 'header' && payload.content) {
+                                headerChunk = payload.content;
+                            } else if (payload.chunk_type === 'chunk' && payload.content) {
                                 code += payload.content;
-                                this.strudelCode.textContent = code;
+                                this.strudelCode.textContent = (headerChunk + code);
                             } else if (payload.chunk_type === 'error') {
                                 throw new Error(payload.content || 'Stream error');
                             }
@@ -582,6 +600,12 @@ class ProDnBApp {
             }
             finalCode = this.fixEuclideanOrder(finalCode);
             finalCode = this.fixTidalToJs(finalCode);
+            finalCode = this.ensureAcidenvRegistered(finalCode);
+            finalCode = this.ensureStackOutput(finalCode);
+            finalCode = this.synthFallback(finalCode);
+            if (headerChunk && !finalCode.includes('REPRESENTATION KEY')) {
+                finalCode = headerChunk + finalCode;
+            }
 
             this.strudelCode.textContent = finalCode || code;
             this.strudelCode.style.color = '';
@@ -662,6 +686,43 @@ class ProDnBApp {
         const last = out.lastIndexOf('])');
         if (last >= 0) out = out.slice(0, last) + ')' + out.slice(last + 2);
         return out;
+    }
+
+    /** Inject register('acidenv', ...) after setcps if .acidenv used but not registered */
+    ensureAcidenvRegistered(code) {
+        if (!code.includes('.acidenv')) return code;
+        if (/register\s*\(\s*['"]acidenv['"]/.test(code)) return code;
+        const registerBlock = `register('acidenv', (x, pat) => pat
+  .lpf(100)
+  .lpenv(x * 9)
+  .lps(0.2)
+  .lpd(0.12)
+);
+`;
+        const setcpsMatch = code.match(/setcps\s*\([^)]+\)\s*;?\s*/);
+        if (setcpsMatch) {
+            const idx = code.indexOf(setcpsMatch[0]) + setcpsMatch[0].length;
+            return code.slice(0, idx) + '\n' + registerBlock + code.slice(idx);
+        }
+        return `setcps(174/60/4);\n${registerBlock}${code}`;
+    }
+
+    /** Synth fallback: sine/sawtooth can be silent; triangle is most reliable */
+    synthFallback(code) {
+        return code.replace(/\.s\("sine"\)/g, '.s("triangle")').replace(/\.s\('sine'\)/g, ".s('triangle')");
+    }
+
+    /** Ensure final stack(drums, bass, pad, lead) so output actually plays */
+    ensureStackOutput(code) {
+        const trimmed = code.trim();
+        const layers = [];
+        for (const name of ['drums', 'bass', 'pad', 'lead']) {
+            if (new RegExp(`const\\s+${name}\\s*=`).test(code)) layers.push(name);
+        }
+        if (layers.length === 0) return code;
+        const stackCall = `stack(${layers.join(', ')})`;
+        if (trimmed.endsWith(stackCall) || trimmed.endsWith(stackCall + '\n')) return code;
+        return code + (code.endsWith('\n') ? '' : '\n') + '\n' + stackCall;
     }
 }
 

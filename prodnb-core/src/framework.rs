@@ -16,6 +16,14 @@ use std::collections::HashMap;
 /// Includes deterministic Strudel primitives from PDB mapping.
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct ProteinFramework {
+    /// PDB ID (e.g. "1HGB") for representation key header
+    #[serde(default)]
+    pub pdb_id: Option<String>,
+
+    /// Protein title/name (e.g. "Hemoglobin") for representation key header
+    #[serde(default)]
+    pub title: Option<String>,
+
     /// Element counts (C, N, O, S, P, etc.) → drum mapping hints
     pub element_counts: HashMap<String, usize>,
 
@@ -90,6 +98,8 @@ impl ProteinFramework {
         let chain_lengths = mapped.chain_lengths;
 
         Ok(ProteinFramework {
+            pdb_id: protein.metadata.pdb_id.clone(),
+            title: protein.metadata.title.clone(),
             element_counts,
             chain_count: features.chain_count,
             residue_count: features.residue_count,

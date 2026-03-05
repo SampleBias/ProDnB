@@ -190,10 +190,35 @@ impl Protein {
             .flat_map(|residue| residue.atoms.iter())
     }
 
+    /// Iterate atoms with residue and chain context for dynamic mapping.
+    pub fn all_atoms_with_context(&self) -> impl Iterator<Item = AtomContext<'_>> {
+        self.chains.iter().enumerate().flat_map(|(chain_idx, chain)| {
+            chain.residues.iter().flat_map(move |residue| {
+                residue.atoms.iter().map(move |atom| AtomContext {
+                    atom,
+                    residue_name: &residue.name,
+                    chain_id: &residue.chain_id,
+                    chain_index: chain_idx,
+                    residue_seq: residue.sequence_number,
+                })
+            })
+        })
+    }
+
     pub fn ca_atoms(&self) -> impl Iterator<Item = &Atom> {
         self.all_atoms()
             .filter(|atom| atom.name == "CA")
     }
+}
+
+/// Atom with residue and chain context for dynamic element-to-sound mapping.
+#[derive(Debug, Clone)]
+pub struct AtomContext<'a> {
+    pub atom: &'a Atom,
+    pub residue_name: &'a str,
+    pub chain_id: &'a str,
+    pub chain_index: usize,
+    pub residue_seq: u32,
 }
 
 struct AtomLineData {

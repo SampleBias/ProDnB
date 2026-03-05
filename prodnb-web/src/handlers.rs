@@ -184,6 +184,8 @@ pub struct InferredBeatDesign {
     pub genre: String,
     pub bpm: u16,
     pub key: Option<String>,
+    #[serde(default)]
+    pub octave: Option<u8>,
     pub melodic: bool,
 }
 
@@ -316,9 +318,10 @@ async fn infer_beat_design_from_function(function_text: &str) -> Result<Inferred
 Instruction: {}
 
 Respond with ONLY valid JSON (no markdown, no explanation):
-{{"genre": "liquid"|"jump_up"|"neurofunk"|"dancefloor"|"jungle", "bpm": 160-185, "key": "C"|"Am"|"Dm"|"Em"|"Gm"|etc or null, "melodic": true|false}}
+{{"genre": "liquid"|"jump_up"|"neurofunk"|"dancefloor"|"jungle", "bpm": 160-185, "key": "C"|"Am"|"Dm"|"Em"|"Gm"|"Cm"|etc or null, "octave": 2-5, "melodic": true|false}}
 
-Genre mapping: liquid=soulful/melodic, jump_up=high-energy/wobble, neurofunk=dark/techy, dancefloor=anthemic, jungle=breakbeat-heavy."#,
+Genre mapping: liquid=soulful/melodic, jump_up=high-energy/wobble, neurofunk=dark/techy, dancefloor=anthemic, jungle=breakbeat-heavy.
+Octave: 2=sub, 3=typical bass, 4=mid, 5=high. Default 3 if unsure."#,
         function_text
     );
 
@@ -493,7 +496,9 @@ pub async fn generate_strudel(
 
     // Call LLM API
     let instruction = req.orchestration_instruction.as_deref().or(req.selected_function.as_deref());
-    match call_groq_api(&framework_json, instruction).await {
+    let pdb_id = protein.metadata.pdb_id.clone();
+    let title = protein.metadata.title.clone();
+    match call_groq_api(&framework_json, instruction, pdb_id.as_deref(), title.as_deref()).await {
         Ok(strudel_code) => {
             log::info!("Generated {} chars of Strudel code", strudel_code.len());
             Ok(HttpResponse::Ok().json(serde_json::json!({
@@ -538,7 +543,7 @@ async fn resolve_genre_params(req: &GenerateRequest) -> Result<(u16, Option<Genr
             let mut params = GenreParams::new(genre);
             params.key = inferred.key.clone();
             params.melodic = inferred.melodic;
-            params.octave = Some(3);
+            params.octave = inferred.octave.map(|o| o.clamp(2, 5)).or(Some(3));
             return Ok((inferred.bpm, Some(params)));
         }
     }
@@ -653,7 +658,7 @@ pub async fn generate_strudel_stream(
         .unwrap_or_default();
 
     let user_content = format!(
-        "Arrange these pre-mapped Strudel primitives into Drum & Bass Strudel code.{}Framework (primitives with pattern, gain, layer):\n{}\n\nOutput a SUBSTANTIAL arrangement. CRITICAL: Build each layer as const (const drums = ..., const bass = ..., const pad = ..., const lead = ...), then output ONE final stack(drums, bass, pad, lead) — in Strudel JS mode only the last expression plays, so multiple separate stack() calls will NOT work. Include setcps, register() if using acidenv, drums, bass, pads, lead. Use ._pianoroll() on melodic layers. Output ONLY valid Strudel JS code. NO d1 $. Blend elements from the beat templates.",
+        "Arrange these pre-mapped Strudel primitives into Drum & Bass Strudel code.{}Framework (primitives with pattern, gain, layer):\n{}\n\nOutput a SUBSTANTIAL arrangement. CRITICAL: (1) Start with a REPRESENTATION KEY comment block: protein ID, title, biological function, and what each layer (drums, bass, pad, lead) represents — e.g. '// BASS: oxygen transport pulse — slider shapes delivery intensity'. The DJ must know what each slider controls. (2) Build each layer as const, then ONE final stack(drums, bass, pad, lead). (3) Use .s(\"triangle\") for melodic n() patterns (most reliable). Include setcps, register() if using acidenv. Output ONLY valid Strudel JS code. NO d1 $. Blend elements from the beat templates.",
         instruction_note,
         framework_json
     );
@@ -664,7 +669,24 @@ pub async fn generate_strudel_stream(
 
     let (tx, mut rx) = tokio::sync::mpsc::channel::<sse::Event>(32);
 
+    let pdb_id = protein.metadata.pdb_id.clone();
+    let title = protein.metadata.title.clone();
+    let instruction_for_header = instruction.map(|s| s.to_string());
+
     tokio::spawn(async move {
+        // Send representation key header first (so DJ knows what sliders control)
+        let header = build_representation_key_header(
+            pdb_id.as_deref(),
+            title.as_deref(),
+            instruction_for_header.as_deref(),
+        );
+        if !header.is_empty() {
+            let _ = tx.send(sse::Event::Data(sse::Data::new_json(serde_json::json!({
+                "chunk_type": "header",
+                "content": header
+            })).unwrap())).await;
+        }
+
         let client = match reqwest::Client::builder()
             .timeout(std::time::Duration::from_secs(120))
             .build()
@@ -805,15 +827,22 @@ BEAT TEMPLATES — blend and mix these for inspiration. Adapt to the framework a
 RULES:
 - Use ONLY the provided primitives from the framework
 - CRITICAL: In Strudel JS mode, ONLY THE LAST EVALUATED EXPRESSION PLAYS. Multiple separate stack() calls will NOT all play — each replaces the previous. You MUST: (1) build each layer as const (e.g. const drums = stack(...), const bass = n(...)), (2) output ONE final stack(drums, bass, pad, lead) at the end. This is the ONLY way all layers play together.
+- If you use .acidenv() on bass or lead, you MUST add register('acidenv', (x, pat) => pat.lpf(100).lpenv(x*9).lps(0.2).lpd(0.12)) right after setcps(). Strudel does not have acidenv built-in.
 - BLEND elements from the beat templates above — mix kicks, basses, pads, percussion from different templates for unique results
 - If framework has genre, key, octave, melodic: match that subgenre style (liquid/jump_up/neurofunk/dancefloor/jungle)
 - Strudel default REPL is JS: NO d1 $, NO stack([...]). Use const for layers, then ONE stack(layer1, layer2, ...).
-- For melodic layers: n(\"0 2 4 6\").scale(\"C:minor\").s(\"sawtooth\").gain(slider(...)). Add ._pianoroll() if desired.
+- For melodic layers: n(\"0 2 4 6\").scale(\"C:minor\").s(\"triangle\").gain(slider(...)). Prefer triangle over sine/sawtooth (most reliable). Add ._pianoroll() if desired.
+- REPRESENTATION KEY: Start with a comment block mapping each layer (drums, bass, pad, lead) to the protein's biological function. Use framework pdb_id and title. Example: \"// BASS: oxygen transport pulse — slider shapes delivery intensity\". This lets the DJ know what each slider controls.
 - No markdown, no comments that break parsing."#, STRUDEL_KNOWLEDGE, BEAT_TEMPLATES)
 }
 
 /// Call Groq API with protein framework to generate Strudel code
-async fn call_groq_api(framework_json: &str, instruction: Option<&str>) -> Result<String> {
+async fn call_groq_api(
+    framework_json: &str,
+    instruction: Option<&str>,
+    pdb_id: Option<&str>,
+    title: Option<&str>,
+) -> Result<String> {
     let api_key = std::env::var("GROQ_API_KEY")
         .context("GROQ_API_KEY environment variable not set")?;
 
@@ -822,7 +851,7 @@ async fn call_groq_api(framework_json: &str, instruction: Option<&str>) -> Resul
         .unwrap_or_default();
 
     let user_content = format!(
-        "Arrange these pre-mapped Strudel primitives into Drum & Bass Strudel code.{}Framework (primitives with pattern, gain, layer):\n{}\n\nOutput a SUBSTANTIAL arrangement. CRITICAL: Build each layer as const (const drums = ..., const bass = ..., const pad = ..., const lead = ...), then output ONE final stack(drums, bass, pad, lead) — in Strudel JS mode only the last expression plays, so multiple separate stack() calls will NOT work. Include setcps, register() if using acidenv, drums, bass, pads, lead. Use ._pianoroll() on melodic layers. Output ONLY valid Strudel JS code. NO d1 $. Blend elements from the beat templates.",
+        "Arrange these pre-mapped Strudel primitives into Drum & Bass Strudel code.{}Framework (primitives with pattern, gain, layer):\n{}\n\nOutput a SUBSTANTIAL arrangement. CRITICAL: (1) Start with a REPRESENTATION KEY comment block: protein ID, title, biological function, and what each layer (drums, bass, pad, lead) represents — e.g. '// BASS: oxygen transport pulse — slider shapes delivery intensity'. The DJ must know what each slider controls. (2) Build each layer as const, then ONE final stack(drums, bass, pad, lead). (3) Use .s(\"triangle\") for melodic n() patterns (most reliable). Include setcps, register() if using acidenv. Output ONLY valid Strudel JS code. NO d1 $. Blend elements from the beat templates.",
         instruction_note,
         framework_json
     );
@@ -887,6 +916,15 @@ async fn call_groq_api(framework_json: &str, instruction: Option<&str>) -> Resul
     content = fix_euclidean_order(&content);
     // Convert Tidal syntax to Strudel JS: remove d1 $, stack([...]) -> stack(...)
     content = tidal_to_js_syntax(&content);
+    // Inject register('acidenv', ...) if .acidenv used but not registered
+    content = ensure_acidenv_registered(&content);
+    // Ensure final stack(drums, bass, pad, lead) so output actually plays
+    content = ensure_stack_output(&content);
+    // Inject representation key header if missing (so DJ knows what sliders control)
+    content = ensure_representation_key(&content, pdb_id, title, instruction);
+    // Synth fallback: sine/sawtooth can be silent; triangle is most reliable
+    content = content.replace(".s(\"sine\")", ".s(\"triangle\")");
+    content = content.replace(".s('sine')", ".s('triangle')");
 
     Ok(content)
 }
@@ -921,5 +959,125 @@ fn fix_euclidean_order(code: &str) -> String {
             }
         }
     }
+    out
+}
+
+/// Inject register('acidenv', ...) after setcps if .acidenv is used but not registered
+fn ensure_acidenv_registered(code: &str) -> String {
+    if !code.contains(".acidenv") {
+        return code.to_string();
+    }
+    if code.contains("register('acidenv'") || code.contains("register(\"acidenv\"") {
+        return code.to_string();
+    }
+    let register_block = r#"register('acidenv', (x, pat) => pat
+  .lpf(100)
+  .lpenv(x * 9)
+  .lps(0.2)
+  .lpd(0.12)
+);
+"#;
+    // Insert after first setcps(...); or setcps(...)\n
+    if let Some(pos) = code.find("setcps(") {
+        let after_setcps = code[pos..].find(';').map(|i| pos + i + 1).unwrap_or_else(|| {
+            let end = code[pos..].find('\n').unwrap_or(code.len() - pos);
+            pos + end
+        });
+        let (before, after) = code.split_at(after_setcps);
+        return format!("{}{}{}", before, register_block, after);
+    }
+    // No setcps found, prepend at start
+    format!("setcps(174/60/4);\n{}{}", register_block, code)
+}
+
+/// Build representation key header string (for streaming or fallback injection)
+fn build_representation_key_header(
+    pdb_id: Option<&str>,
+    title: Option<&str>,
+    instruction: Option<&str>,
+) -> String {
+    let id = pdb_id.unwrap_or("PDB");
+    let name = title.as_deref().unwrap_or("protein").trim();
+    let name = if name.is_empty() { "protein" } else { name };
+    let func_summary = instruction
+        .map(|s| {
+            let first = s.lines().next().unwrap_or(s).trim();
+            if first.len() > 80 {
+                format!("{}...", &first[..77])
+            } else {
+                first.to_string()
+            }
+        })
+        .unwrap_or_else(|| "Structural mapping from PDB atoms".to_string());
+    format!(
+        r#"// === PROTEIN: {} — {}
+// Function: {}
+// REPRESENTATION KEY (adjust sliders to shape the biology):
+//   DRUMS: Carbon backbone rhythm (C atoms)
+//   BASS:  {} — slider shapes intensity
+//   PAD:   Structural dynamics
+//   LEAD:  Melodic interpretation
+// Tip: If melodic layers (n()) are silent, click the Strudel play area first (browser autoplay).
+//
+"#,
+        id,
+        name,
+        func_summary,
+        if func_summary.contains("oxygen") || func_summary.to_lowercase().contains("transport") {
+            "Binding/transport pulse"
+        } else {
+            "Low-end pulse"
+        }
+    )
+}
+
+/// Inject representation key comment block if missing (maps layers to protein biology for DJ)
+fn ensure_representation_key(
+    code: &str,
+    pdb_id: Option<&str>,
+    title: Option<&str>,
+    instruction: Option<&str>,
+) -> String {
+    if code.contains("REPRESENTATION KEY") || code.contains("PROTEIN:") {
+        return code.to_string();
+    }
+    let header = build_representation_key_header(pdb_id, title, instruction);
+    format!("{}{}", header, code.trim_start())
+}
+
+/// Ensure final stack(drums, bass, pad, lead) so output actually plays
+fn ensure_stack_output(code: &str) -> String {
+    let trimmed = code.trim();
+    // Already ends with stack(...) - check it's the main output
+    if trimmed.ends_with(')') {
+        let stack_pos = trimmed.rfind("stack(");
+        if let Some(sp) = stack_pos {
+            // Last significant expression is a stack - likely ok
+            let after = trimmed[sp..].trim();
+            if after.starts_with("stack(") && !after.contains("const ") {
+                return code.to_string();
+            }
+        }
+    }
+    // Collect const names: drums, bass, pad, lead
+    let mut layers = Vec::new();
+    for name in ["drums", "bass", "pad", "lead"] {
+        if code.contains(&format!("const {} =", name)) {
+            layers.push(name);
+        }
+    }
+    if layers.is_empty() {
+        return code.to_string();
+    }
+    let stack_call = format!("stack({})", layers.join(", "));
+    if code.trim_end().ends_with(&stack_call) || code.contains(&format!("{}\n", stack_call)) {
+        return code.to_string();
+    }
+    // Append final stack if missing
+    let mut out = code.to_string();
+    if !out.ends_with('\n') {
+        out.push('\n');
+    }
+    out.push_str(&format!("\n{}", stack_call));
     out
 }

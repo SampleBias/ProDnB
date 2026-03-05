@@ -29,6 +29,12 @@ Reference for generating clean, executable Strudel code. Use this when arranging
 ### Drum Samples
 bd, sd, hh, oh, cp, rim, perc, misc, fx
 
+### Synth vs Sample (melodic layers)
+- **Samples** (s("bd"), s("hh")): Loaded from sample banks. Always work.
+- **Synths** (n("0 2 4").s("sine")): WebAudio oscillators. Use **triangle** as default — Strudel's native default, most reliable. If sine/sawtooth are silent, switch to triangle.
+- For n() melodic patterns: `.s("triangle")` is the safest. Then `.s("sawtooth")`, `.s("sine")`. Always set `.gain(slider(0.5, 0, 1))` so layers are audible.
+- If melodic layers are silent: (1) Click the Strudel play area first (browser autoplay), (2) Try .s("triangle") instead of sine/sawtooth.
+
 ### Effects
 - .gain(0.8) - volume 0-1
 - .bank("RolandTR808") - drum machine
@@ -61,10 +67,24 @@ s("hh(5,8)")
 s("[hh hh] [hh ~]")
 ```
 
+### acidenv (REQUIRED when using .acidenv())
+Strudel does NOT have `.acidenv` built-in. You MUST register it before any bass/lead uses it. Paste right after setcps():
+```
+setcps(168/60/4);
+register('acidenv', (x, pat) => pat
+  .lpf(100)
+  .lpenv(x * 9)
+  .lps(0.2)
+  .lpd(0.12)
+);
+```
+If your code uses `.acidenv(slider(...))` on bass or lead, you MUST include this register() block first.
+
 ### Full DnB Stack (Template) — JS mode
 **Build layers as const, then ONE stack.** Only the last evaluated expression plays, so you MUST combine all layers into a single stack():
 ```
-setcps(0.725)
+setcps(0.725);
+register('acidenv', (x, pat) => pat.lpf(100).lpenv(x * 9).lps(0.2).lpd(0.12));
 
 const drums = stack(
   s("bd(5,8)").gain(slider(0.9, 0, 1)),
@@ -77,7 +97,7 @@ const bass = n("<0 4 0 9 7>*16").scale("C:minor").octave(3).s("sawtooth")
 
 const pad = n("0 2 4 6").scale("C:minor").octave(2).s("sawtooth").lpf(800).gain(slider(0.32, 0, 1))
 
-// ✅ single output — THIS is what plays
+// ✅ single output — THIS is what plays (REQUIRED)
 stack(drums, bass, pad)
 ```
 
@@ -108,11 +128,29 @@ When framework includes `genre`, match the style:
 - Output full patterns in stack(p1, p2, ...) - kick, snare, hats, perc layers
 - No separate piano roll UI in ProDnB
 
+## Representation Key (REQUIRED for ProDnB)
+Every generated code MUST start with a comment block that maps each layer to the protein's biological function. This lets the DJ know what each slider controls.
+
+Format:
+```
+// === PROTEIN: [PDB_ID] — [Title/name]
+// Function: [one-line biological role, e.g. "Oxygen transport in blood"]
+// REPRESENTATION KEY (adjust sliders to shape the biology):
+//   DRUMS: [e.g. Carbon backbone rhythm from C atoms]
+//   BASS:  [e.g. Oxygen binding pulse — delivery intensity]
+//   PAD:   [e.g. Heme pocket dynamics]
+//   LEAD:  [e.g. Subunit interface melody]
+```
+Include inline comments on each const: `// slider = [biological meaning]`
+
 ## Common Mistakes to Avoid
 1. (5,8)bd -> use bd(5,8)
 2. Multiple separate stack() calls -> only the last plays! Use const for layers, then ONE stack(drums, bass, pad, lead)
-3. sound "bd" -> use s("bd")
-4. d1 $ or stack([...]) -> use const + stack(p1, p2, ...) for JS mode
+3. Using .acidenv() without register('acidenv', ...) -> Strudel will error ".acidenv is not a function". Always add the register block right after setcps when using acid bass.
+4. Defining drums, bass, pad, lead but not outputting stack() -> nothing plays! The final line MUST be stack(drums, bass, pad, lead).
+5. n() melodic layers silent -> use .s("triangle") instead of sine/sawtooth; ensure .gain() is set; user may need to click play area first.
+6. sound "bd" -> use s("bd")
+7. d1 $ or stack([...]) -> use const + stack(p1, p2, ...) for JS mode
 
 ## Mode Guard (for LLM/linting)
 - If output contains `d1` or `$` → convert to JS or reject with: "Tidal syntax detected; use stack(p1, p2, ...) for Strudel default REPL."
