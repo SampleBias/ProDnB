@@ -199,7 +199,8 @@ class ProDnBApp {
 
             if (!response.ok) {
                 const err = await response.json().catch(() => ({}));
-                throw new Error(err.error || 'Map failed');
+                const msg = err.error || err.message || `Map failed (${response.status})`;
+                throw new Error(msg);
             }
 
             this.mappedPrimitives = await response.json();

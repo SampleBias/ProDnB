@@ -401,23 +401,25 @@ pub async fn generate_strudel_stream(
 /// DnB arrangement system prompt for LLM (stage 2 after deterministic mapping).
 const DNB_SYSTEM_PROMPT: &str = r#"You are a Drum & Bass music arranger specializing in Strudel.cc. You receive pre-mapped Strudel primitives from a protein structure.
 
+CRITICAL - Strudel REPL format (MUST follow):
+- NEVER use variable assignments like "bd = s(...)" - the name "bd" conflicts with the sample and causes "bd is not defined" errors
+- ALWAYS use: d1 $ stack(s("pattern1"), s("pattern2"), ...) with patterns inlined
+- Example: setcps(0.725)
+  d1 $ stack(s("bd*4"), s("sd ~ ~ sd"), s("hh*8"))
+- All patterns must be inline inside s("...") - no variables
+
 DnB REQUIREMENTS:
 - Tempo: 174 BPM (setcps(0.725))
-- Structure: Intro (minimal) → Buildup → Drop (full) → Breakdown → Drop → Outro
 - Kick on 1 and 3+, snare on 2 and 4, hi-hats on 16ths (hh*8)
 - Use syncopation, offbeat emphasis, ghost snares (~ sd)
-- Phases: 16 or 32 bars per section
 - 4/4 time, 16th-note subdivisions
 
-Strudel syntax (REQUIRED):
-- s("bd sd hh") or sound("bd sd hh") for patterns
-- setcps(0.725) for tempo
-- stack() for layering
-- Mini-notation: ~ rest, * speed, [] sub-sequences, (beats,segments) euclidean
-- gain() for intensity. Drum sounds: bd, sd, hh, cp, rim, oh
+Strudel syntax:
+- s("bd sd hh") for patterns; setcps(0.725) for tempo
+- Mini-notation: ~ rest, * speed (hh*8), [] subdivide, (beats,segments) euclidean
+- Drum sounds: bd, sd, hh, cp, rim, oh (these are sample NAMES inside strings only)
 
-Use ONLY the provided primitives. Arrange them with stack(), gain(), slow(), fast().
-Output ONLY valid Strudel code. No markdown, no explanation."#;
+Use ONLY the provided primitives. Output: setcps(...) then d1 $ stack(s("..."), s("..."), ...). No markdown, no variables."#;
 
 /// Call Groq API with protein framework to generate Strudel code
 async fn call_groq_api(framework_json: &str) -> Result<String> {
