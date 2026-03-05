@@ -3,6 +3,7 @@ pub mod features;
 pub mod composition;
 pub mod rng;
 pub mod style;
+pub mod genre;
 pub mod strudel;
 pub mod framework;
 
@@ -14,5 +15,6 @@ pub use strudel::{
     protein_to_primitives, assemble_strudel, MappedOutput, StrudelPrimitive, SliderValues,
 };
 pub use framework::ProteinFramework;
+pub use genre::{DnBGenre, GenreParams};
 pub use rng::DeterministicRng;
 pub use style::{Style, StyleConfig};

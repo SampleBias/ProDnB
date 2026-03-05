@@ -8,7 +8,7 @@ use tempfile::NamedTempFile;
 use std::io::Write;
 use std::time::{SystemTime, UNIX_EPOCH};
 use serde::{Deserialize, Serialize};
-use prodnb_core::{Protein, ProteinFramework, protein_to_primitives, assemble_strudel, MappedOutput, SliderValues};
+use prodnb_core::{Protein, ProteinFramework, protein_to_primitives, assemble_strudel, MappedOutput, SliderValues, DnBGenre, GenreParams};
 use anyhow::{Context, Result};
 
 /// Maximum file size for PDB upload (10MB)
@@ -33,6 +33,14 @@ pub struct GenerateRequest {
     style: Option<String>,
     #[serde(default)]
     bpm: Option<u16>,
+    #[serde(default)]
+    pub genre: Option<String>,
+    #[serde(default)]
+    pub key: Option<String>,
+    #[serde(default)]
+    pub octave: Option<u8>,
+    #[serde(default)]
+    pub melodic: Option<bool>,
 }
 
 /// Response structure for Strudel generation (streaming)
@@ -166,8 +174,10 @@ pub async fn generate_strudel(
             error::ErrorBadRequest(format!("Failed to load PDB file: {}", e))
         })?;
 
-    // Build framework for LLM
-    let framework = ProteinFramework::from_protein(&protein)
+    // Build framework for LLM (with genre params)
+    let bpm = req.bpm.unwrap_or(174);
+    let genre_params = build_genre_params(&req);
+    let framework = ProteinFramework::from_protein_with_params(&protein, bpm, genre_params.as_ref())
         .map_err(|e| {
             log::error!("Failed to build framework: {}", e);
             error::ErrorInternalServerError(format!("Failed to build protein framework: {}", e))
@@ -202,6 +212,22 @@ pub async fn generate_strudel(
     }
 }
 
+/// Build GenreParams from request.
+fn build_genre_params(req: &GenerateRequest) -> Option<GenreParams> {
+    let genre = req.genre.as_deref().and_then(DnBGenre::from_str)?;
+    let mut params = GenreParams::new(genre);
+    if let Some(k) = &req.key {
+        params.key = Some(k.clone());
+    }
+    if let Some(o) = req.octave {
+        params.octave = Some(o.clamp(2, 5));
+    }
+    if let Some(m) = req.melodic {
+        params.melodic = m;
+    }
+    Some(params)
+}
+
 /// Map PDB to primitives (stage 1, deterministic). Returns JSON for piano roll.
 pub async fn map_primitives(
     req: web::Json<GenerateRequest>,
@@ -219,7 +245,8 @@ pub async fn map_primitives(
     };
 
     let bpm = req.bpm.unwrap_or(174);
-    let mapped = match protein_to_primitives(&protein, bpm) {
+    let genre_params = build_genre_params(&req);
+    let mapped = match protein_to_primitives(&protein, bpm, genre_params.as_ref()) {
         Ok(m) => m,
         Err(e) => {
             log::error!("Failed to map primitives: {}", e);
@@ -239,6 +266,14 @@ pub struct AssembleRequest {
     pub tempo: u16,
     #[serde(default)]
     pub sliders: Option<SliderValues>,
+    #[serde(default)]
+    pub genre: Option<String>,
+    #[serde(default)]
+    pub key: Option<String>,
+    #[serde(default)]
+    pub octave: Option<u8>,
+    #[serde(default)]
+    pub melodic: Option<bool>,
 }
 
 pub async fn assemble_from_primitives(
@@ -250,6 +285,10 @@ pub async fn assemble_from_primitives(
         rhythm_seed: String::new(),
         chain_lengths: vec![],
         element_counts: std::collections::HashMap::new(),
+        genre: req.genre.clone(),
+        key: req.key.clone(),
+        octave: req.octave,
+        melodic: req.melodic.unwrap_or(false),
     };
     let code = assemble_strudel(&mapped, req.sliders.as_ref());
     Ok(HttpResponse::Ok().json(serde_json::json!({
@@ -270,7 +309,9 @@ pub async fn generate_strudel_stream(
             error::ErrorBadRequest(format!("Failed to load PDB file: {}", e))
         })?;
 
-    let framework = ProteinFramework::from_protein(&protein)
+    let bpm = req.bpm.unwrap_or(174);
+    let genre_params = build_genre_params(&req);
+    let framework = ProteinFramework::from_protein_with_params(&protein, bpm, genre_params.as_ref())
         .map_err(|e| {
             log::error!("Failed to build framework: {}", e);
             error::ErrorInternalServerError(format!("Failed to build framework: {}", e))
@@ -283,7 +324,7 @@ pub async fn generate_strudel_stream(
         })?;
 
     let user_content = format!(
-        "Arrange these pre-mapped Strudel primitives into Drum & Bass Strudel code.\n\nFramework (primitives with pattern, gain, layer):\n{}\n\nOutput ONLY valid Strudel code. Use each primitive's pattern. For intensity use .gain(slider(X, 0, 1)) so Strudel.cc adds sliders. Piano roll = patterns in stack. Format: setcps(0.725) then d1 $ stack([s(\"...\").gain(slider(0.9, 0, 1)), ...]).",
+        "Arrange these pre-mapped Strudel primitives into Drum & Bass Strudel code.\n\nFramework (primitives with pattern, gain, layer):\n{}\n\nOutput ONLY valid Strudel JS code. NO d1 $, NO stack([...]). Use stack(p1, p2, p3) variadic. For intensity use .gain(slider(X, 0, 1)). Format: setcps(0.725) then stack(s(\"...\").gain(slider(0.9, 0, 1)), s(\"...\"), ...).",
         framework_json
     );
 
@@ -424,9 +465,11 @@ fn dnb_system_prompt() -> String {
 
 RULES:
 - Use ONLY the provided primitives from the framework
-- Output: setcps(0.725) then d1 $ stack([...]) with .gain(slider(X, 0, 1)) for intensity
-- Piano roll = the patterns in stack (kick, snare, hats, perc). No separate UI.
-- No variables, no markdown"#, STRUDEL_KNOWLEDGE)
+- If framework has genre, key, octave, melodic: match that subgenre style (liquid/jump_up/neurofunk/dancefloor/jungle)
+- Strudel default REPL is JS: NO d1 $, NO stack([...]). Use stack(p1, p2, p3) variadic.
+- Output: setcps(0.725) then stack(s(\"...\").gain(slider(X, 0, 1)), ...) for intensity
+- For melodic layers: n(\"0 2 4 6\").scale(\"C:minor\").s(\"sawtooth\").gain(slider(...))
+- Piano roll = patterns in stack. No variables, no markdown"#, STRUDEL_KNOWLEDGE)
 }
 
 /// Call Groq API with protein framework to generate Strudel code
@@ -435,7 +478,7 @@ async fn call_groq_api(framework_json: &str) -> Result<String> {
         .context("GROQ_API_KEY environment variable not set")?;
 
     let user_content = format!(
-        "Arrange these pre-mapped Strudel primitives into Drum & Bass Strudel code.\n\nFramework (primitives with pattern, gain, layer):\n{}\n\nOutput ONLY valid Strudel code. Use each primitive's pattern. For intensity use .gain(slider(X, 0, 1)) so Strudel.cc adds sliders. Piano roll = patterns in stack. Format: setcps(0.725) then d1 $ stack([s(\"...\").gain(slider(0.9, 0, 1)), ...]).",
+        "Arrange these pre-mapped Strudel primitives into Drum & Bass Strudel code.\n\nFramework (primitives with pattern, gain, layer):\n{}\n\nOutput ONLY valid Strudel JS code. NO d1 $, NO stack([...]). Use stack(p1, p2, p3) variadic. For intensity use .gain(slider(X, 0, 1)). Format: setcps(0.725) then stack(s(\"...\").gain(slider(0.9, 0, 1)), s(\"...\"), ...).",
         framework_json
     );
 
@@ -497,8 +540,27 @@ async fn call_groq_api(framework_json: &str) -> Result<String> {
 
     // Fix common LLM mistake: (5,8)bd -> bd(5,8) (euclidean must be sound first)
     content = fix_euclidean_order(&content);
+    // Convert Tidal syntax to Strudel JS: remove d1 $, stack([...]) -> stack(...)
+    content = tidal_to_js_syntax(&content);
 
     Ok(content)
+}
+
+/// Convert Tidal (Haskell) syntax to Strudel JS mode for default REPL.
+fn tidal_to_js_syntax(code: &str) -> String {
+    use regex::Regex;
+    let mut out = code.to_string();
+    // Remove d1 $, d2 $, etc.
+    if let Ok(re) = Regex::new(r"\bd\d+\s*\$?\s*") {
+        out = re.replace_all(&out, "").to_string();
+    }
+    // stack([ -> stack( (variadic, no array)
+    out = out.replace("stack([", "stack(");
+    // Replace only the last ]) to avoid breaking nested stacks
+    if let Some(pos) = out.rfind("])") {
+        out = format!("{}){}", &out[..pos], &out[pos + 2..]);
+    }
+    out
 }
 
 /// Fix reversed euclidean patterns: (beats,segments)sound -> sound(beats,segments)

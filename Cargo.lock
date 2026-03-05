@@ -2364,6 +2364,7 @@ dependencies = [
  "log",
  "mime_guess",
  "prodnb-core",
+ "regex",
  "reqwest",
  "serde",
  "serde_json",

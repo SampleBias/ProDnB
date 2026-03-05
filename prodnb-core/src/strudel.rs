@@ -10,6 +10,7 @@
 
 use crate::protein::{Protein, Atom};
 use crate::features::FeatureExtractor;
+use crate::genre::{DnBGenre, GenreParams};
 use anyhow::Result;
 use serde::{Serialize, Deserialize};
 use std::collections::HashMap;
@@ -26,6 +27,15 @@ pub struct StrudelPrimitive {
     #[serde(default = "default_gain")]
     pub gain: f64,
     pub layer: Option<String>,
+    /// Scale for melodic layers, e.g. "C:minor"
+    #[serde(default)]
+    pub scale: Option<String>,
+    /// Octave for melodic content (2–5)
+    #[serde(default)]
+    pub octave: Option<u8>,
+    /// Note pattern for melodic layers, e.g. "0 2 4 6"
+    #[serde(default)]
+    pub note_pattern: Option<String>,
 }
 
 fn default_gain() -> f64 {
@@ -40,18 +50,85 @@ pub struct MappedOutput {
     pub rhythm_seed: String,
     pub chain_lengths: Vec<usize>,
     pub element_counts: HashMap<String, usize>,
+    /// Genre for LLM arrangement context
+    #[serde(default)]
+    pub genre: Option<String>,
+    /// Musical key, e.g. "C", "Am"
+    #[serde(default)]
+    pub key: Option<String>,
+    /// Octave for melodic content (2–5)
+    #[serde(default)]
+    pub octave: Option<u8>,
+    /// Include melodic layers
+    #[serde(default)]
+    pub melodic: bool,
 }
 
-/// Maps atom element to Strudel sound name.
+/// Maps atom element to Strudel sound name (default mapping).
 pub fn element_to_sound(element: &str) -> &'static str {
-    match element.to_uppercase().as_str() {
-        "C" => "bd",
-        "N" => "sd",
-        "O" => "hh",
-        "S" => "cp",
-        "P" => "rim",
-        "H" => "~",  // rest/silence for hydrogen (too many)
-        _ => "perc",
+    element_to_sound_for_genre(element, None)
+}
+
+/// Genre-aware element-to-sound mapping.
+/// - Liquid: softer hats, pad-like perc
+/// - Jump Up: heavier bd, aggressive sd
+/// - Neurofunk: metallic/industrial (rim, fx)
+/// - Dancefloor: classic bd/sd/hh
+/// - Jungle: break-style perc (cp, rim), amen density
+pub fn element_to_sound_for_genre(element: &str, genre: Option<DnBGenre>) -> &'static str {
+    let el = element.to_uppercase();
+    if el == "H" {
+        return "~";
+    }
+    match genre {
+        Some(DnBGenre::Liquid) => match el.as_str() {
+            "C" => "bd",
+            "N" => "sd",
+            "O" => "hh",  // softer in arrangement
+            "S" => "cp",
+            "P" => "perc",  // pad-like
+            _ => "perc",
+        },
+        Some(DnBGenre::JumpUp) => match el.as_str() {
+            "C" => "bd",
+            "N" => "sd",
+            "O" => "hh",
+            "S" => "cp",
+            "P" => "perc",  // wobble hints
+            _ => "perc",
+        },
+        Some(DnBGenre::Neurofunk) => match el.as_str() {
+            "C" => "bd",
+            "N" => "sd",
+            "O" => "hh",
+            "S" => "rim",  // metallic
+            "P" => "fx",   // industrial
+            _ => "perc",
+        },
+        Some(DnBGenre::Dancefloor) => match el.as_str() {
+            "C" => "bd",
+            "N" => "sd",
+            "O" => "hh",
+            "S" => "cp",
+            "P" => "rim",
+            _ => "perc",
+        },
+        Some(DnBGenre::Jungle) => match el.as_str() {
+            "C" => "bd",
+            "N" => "sd",
+            "O" => "hh",
+            "S" => "cp",
+            "P" => "rim",  // break-style
+            _ => "perc",
+        },
+        None => match el.as_str() {
+            "C" => "bd",
+            "N" => "sd",
+            "O" => "hh",
+            "S" => "cp",
+            "P" => "rim",
+            _ => "perc",
+        },
     }
 }
 
@@ -106,7 +183,7 @@ pub fn protein_to_strudel_layered(protein: &Protein, bpm: u16) -> String {
     let mut parts = Vec::new();
     let cps = bpm as f64 / 60.0 / 4.0;
 
-    for (i, chain) in protein.chains.iter().enumerate() {
+    for chain in protein.chains.iter() {
         let sounds: Vec<&str> = chain
             .residues
             .iter()
@@ -120,8 +197,7 @@ pub fn protein_to_strudel_layered(protein: &Protein, bpm: u16) -> String {
             continue;
         }
         let pattern = sounds.join(" ");
-        let d = format!("d{}", (i % 4) + 1);
-        parts.push(format!(r#"  {}.set(s("{}"))"#, d, pattern));
+        parts.push(format!(r#"  s("{}")"#, pattern));
     }
 
     if parts.is_empty() {
@@ -129,20 +205,28 @@ pub fn protein_to_strudel_layered(protein: &Protein, bpm: u16) -> String {
     }
 
     format!(
-        r#"// ProDnB layered Strudel (chains → d1,d2,d3,d4)
+        r#"// ProDnB layered Strudel (chains → stack) - Strudel JS mode
 setcps({})
 
+stack(
 {}
+)
 "#,
         cps,
-        parts.join("\n")
+        parts.join(",\n")
     )
 }
 
 /// Deterministic mapping: PDB protein → structured Strudel primitives JSON.
 /// B-factor variance → euclidean (beats,segments); occupancy → gain; chain length → density.
-pub fn protein_to_primitives(protein: &Protein, bpm: u16) -> Result<MappedOutput> {
+/// Genre params adjust element-to-sound mapping, euclidean density, and optional melodic layers.
+pub fn protein_to_primitives(
+    protein: &Protein,
+    bpm: u16,
+    genre_params: Option<&GenreParams>,
+) -> Result<MappedOutput> {
     let features = FeatureExtractor::extract(protein)?;
+    let genre = genre_params.map(|g| g.genre);
 
     let mut element_counts: HashMap<String, usize> = HashMap::new();
     for atom in protein.all_atoms() {
@@ -156,16 +240,21 @@ pub fn protein_to_primitives(protein: &Protein, bpm: u16) -> Result<MappedOutput
         .map(|c| c.residues.len())
         .collect();
 
-    // B-factor variance → euclidean rhythm: high variance → (5,8), low → (3,4)
-    let (beats, segments) = if features.b_factor_variance > 50.0 {
+    // B-factor variance → euclidean rhythm; genre adjusts density (Jungle denser, Liquid sparser)
+    let (base_beats, base_segments): (u8, u8) = if features.b_factor_variance > 50.0 {
         (5, 8)
     } else if features.b_factor_variance > 20.0 {
         (4, 8)
     } else {
         (3, 8)
     };
+    let (beats, segments) = match genre {
+        Some(DnBGenre::Jungle) => ((base_beats + 1).min(7), base_segments.max(8)),
+        Some(DnBGenre::Liquid) => ((base_beats.saturating_sub(1)).max(2), base_segments),
+        _ => (base_beats, base_segments),
+    };
 
-    // Build rhythm seed from atoms
+    // Build rhythm seed from atoms (genre-aware element mapping)
     let atoms: Vec<_> = protein.all_atoms()
         .filter(|a| a.element.to_uppercase() != "H")
         .collect();
@@ -173,17 +262,26 @@ pub fn protein_to_primitives(protein: &Protein, bpm: u16) -> Result<MappedOutput
     let rhythm_seed: String = atoms.iter()
         .step_by(step)
         .take(24)
-        .map(|a| element_to_sound(&a.element).to_string())
+        .map(|a| element_to_sound_for_genre(&a.element, genre).to_string())
         .collect::<Vec<_>>()
         .join(" ");
+
+    let genre_str = genre.map(|g| g.as_str().to_string());
+    let key = genre_params.and_then(|g| g.key.clone());
+    let octave = genre_params.and_then(|g| g.octave);
+    let melodic = genre_params.map(|g| g.melodic).unwrap_or(false);
 
     if rhythm_seed.is_empty() {
         return Ok(MappedOutput {
             tempo: bpm,
-            primitives: default_primitives(bpm),
+            primitives: default_primitives(bpm, genre),
             rhythm_seed: "bd sd hh bd ~ sd".to_string(),
             chain_lengths: vec![4],
             element_counts,
+            genre: genre_str,
+            key,
+            octave,
+            melodic,
         });
     }
 
@@ -208,6 +306,9 @@ pub fn protein_to_primitives(protein: &Protein, bpm: u16) -> Result<MappedOutput
         segments: Some(segments),
         gain: base_gain * 0.95,
         layer: Some("kick".to_string()),
+        scale: None,
+        octave: None,
+        note_pattern: None,
     });
 
     // Snare: classic DnB on 2 and 4
@@ -219,6 +320,9 @@ pub fn protein_to_primitives(protein: &Protein, bpm: u16) -> Result<MappedOutput
         segments: None,
         gain: base_gain * 0.9,
         layer: Some("snare".to_string()),
+        scale: None,
+        octave: None,
+        note_pattern: None,
     });
 
     // Hi-hats: 16ths from chain length
@@ -230,6 +334,9 @@ pub fn protein_to_primitives(protein: &Protein, bpm: u16) -> Result<MappedOutput
         segments: None,
         gain: base_gain * 0.6,
         layer: Some("hats".to_string()),
+        scale: None,
+        octave: None,
+        note_pattern: None,
     });
 
     // Optional: rhythm from protein as additional layer
@@ -242,6 +349,30 @@ pub fn protein_to_primitives(protein: &Protein, bpm: u16) -> Result<MappedOutput
             segments: None,
             gain: base_gain * 0.5,
             layer: Some("perc".to_string()),
+            scale: None,
+            octave: None,
+            note_pattern: None,
+        });
+    }
+
+    // Optional: melodic layer (Liquid, Dancefloor)
+    if melodic && matches!(genre, Some(DnBGenre::Liquid) | Some(DnBGenre::Dancefloor)) {
+        let scale_key = key.as_deref().unwrap_or("C");
+        // "Am" -> "A:minor", "C" -> "C:minor"
+        let root = scale_key.trim_end_matches('m');
+        let scale = format!("{}:minor", root);
+        let oct = octave.unwrap_or(3);
+        primitives.push(StrudelPrimitive {
+            primitive_type: "melodic".to_string(),
+            pattern: None,
+            sound: None,
+            beats: None,
+            segments: None,
+            gain: base_gain * 0.4,
+            layer: Some("melodic".to_string()),
+            scale: Some(scale),
+            octave: Some(oct),
+            note_pattern: Some("0 2 4 6 4 2".to_string()),
         });
     }
 
@@ -251,10 +382,14 @@ pub fn protein_to_primitives(protein: &Protein, bpm: u16) -> Result<MappedOutput
         rhythm_seed,
         chain_lengths,
         element_counts,
+        genre: genre_str,
+        key,
+        octave,
+        melodic,
     })
 }
 
-fn default_primitives(bpm: u16) -> Vec<StrudelPrimitive> {
+fn default_primitives(_bpm: u16, _genre: Option<DnBGenre>) -> Vec<StrudelPrimitive> {
     vec![
         StrudelPrimitive {
             primitive_type: "euclidean".to_string(),
@@ -264,6 +399,9 @@ fn default_primitives(bpm: u16) -> Vec<StrudelPrimitive> {
             segments: Some(8),
             gain: 0.9,
             layer: Some("kick".to_string()),
+            scale: None,
+            octave: None,
+            note_pattern: None,
         },
         StrudelPrimitive {
             primitive_type: "drum".to_string(),
@@ -273,6 +411,9 @@ fn default_primitives(bpm: u16) -> Vec<StrudelPrimitive> {
             segments: None,
             gain: 0.85,
             layer: Some("snare".to_string()),
+            scale: None,
+            octave: None,
+            note_pattern: None,
         },
         StrudelPrimitive {
             primitive_type: "drum".to_string(),
@@ -282,6 +423,9 @@ fn default_primitives(bpm: u16) -> Vec<StrudelPrimitive> {
             segments: None,
             gain: 0.6,
             layer: Some("hats".to_string()),
+            scale: None,
+            octave: None,
+            note_pattern: None,
         },
     ]
 }
@@ -323,6 +467,10 @@ pub fn assemble_strudel(mapped: &MappedOutput, sliders: Option<&SliderValues>) -
             } else {
                 continue;
             }
+        } else if p.primitive_type == "melodic" {
+            let scale = p.scale.as_deref().unwrap_or("C:minor");
+            let note_pat = p.note_pattern.as_deref().unwrap_or("0 2 4 6");
+            format!(r#"n("{}").scale("{}").s("sawtooth").gain({})"#, note_pat, scale, gain_expr)
         } else if let Some(ref pat) = p.pattern {
             format!(r#"s("{}").gain({})"#, pat, gain_expr)
         } else {

@@ -21,11 +21,14 @@ class ProDnBApp {
 
         // Generate elements
         this.generateBtn = document.getElementById('generateBtn');
-        this.generateStreamBtn = document.getElementById('generateStreamBtn');
-        this.btnText = this.generateBtn.querySelector('.btn-text');
-        this.btnLoading = this.generateBtn.querySelector('.btn-loading');
-        this.streamBtnText = this.generateStreamBtn?.querySelector('.btn-text');
-        this.streamBtnLoading = this.generateStreamBtn?.querySelector('.btn-loading');
+        this.btnText = this.generateBtn?.querySelector('.btn-text');
+        this.btnLoading = this.generateBtn?.querySelector('.btn-loading');
+
+        // Genre elements
+        this.genreSelect = document.getElementById('genreSelect');
+        this.keySelect = document.getElementById('keySelect');
+        this.octaveInput = document.getElementById('octaveInput');
+        this.melodicCheck = document.getElementById('melodicCheck');
 
         // Output elements
         this.strudelCode = document.getElementById('strudelCode');
@@ -34,6 +37,19 @@ class ProDnBApp {
 
         // Status message
         this.statusMessage = document.getElementById('statusMessage');
+    }
+
+    getGenreParams() {
+        const genre = this.genreSelect?.value || '';
+        const key = this.keySelect?.value || '';
+        const octave = this.octaveInput?.value ? parseInt(this.octaveInput.value, 10) : null;
+        const melodic = this.melodicCheck?.checked || false;
+        return {
+            ...(genre && { genre }),
+            ...(key && { key }),
+            ...(octave >= 2 && octave <= 5 && { octave }),
+            ...(melodic && { melodic })
+        };
     }
 
     initEventListeners() {
@@ -74,16 +90,17 @@ class ProDnBApp {
             this.clearFileUpload();
         });
 
-        // Generate Strudel code
-        this.generateBtn.addEventListener('click', () => {
-            this.generateStrudel();
+        // Genre options change → re-map and reassemble
+        [this.genreSelect, this.keySelect, this.octaveInput, this.melodicCheck].forEach(el => {
+            if (el) {
+                el.addEventListener('change', () => {
+                    if (this.uploadedFilePath) this.fetchMap();
+                });
+            }
         });
-
-        // Generate (Stream)
-        if (this.generateStreamBtn) {
-            this.generateStreamBtn.addEventListener('click', () => {
-                this.generateStrudelStream();
-            });
+        // Generate Strudel code (streams output)
+        if (this.generateBtn) {
+            this.generateBtn.addEventListener('click', () => this.generateStrudel());
         }
 
         // Copy code
@@ -141,7 +158,6 @@ class ProDnBApp {
             this.fileName.textContent = file.name;
             this.fileStats.textContent = `Chains: ${result.chain_count} | Residues: ${result.residue_count} | Atoms: ${result.atom_count}`;
             this.generateBtn.disabled = false;
-            if (this.generateStreamBtn) this.generateStreamBtn.disabled = false;
 
             this.showStatus('PDB file uploaded successfully!', 'success');
 
@@ -158,10 +174,11 @@ class ProDnBApp {
         if (!this.uploadedFilePath) return;
 
         try {
+            const genreParams = this.getGenreParams();
             const response = await fetch('/api/map', {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify({ file_path: this.uploadedFilePath, bpm: 174 })
+                body: JSON.stringify({ file_path: this.uploadedFilePath, bpm: 174, ...genreParams })
             });
 
             if (!response.ok) {
@@ -180,7 +197,7 @@ class ProDnBApp {
         } catch (error) {
             console.error('Map error:', error);
             this.showStatus(error.message || 'Failed to map primitives', 'error');
-            // Don't block - user can still use Generate (LLM)
+            // Don't block - user can still use Generate
         }
     }
 
@@ -188,12 +205,14 @@ class ProDnBApp {
         if (!this.mappedPrimitives) return;
 
         try {
+            const genreParams = this.getGenreParams();
             const response = await fetch('/api/assemble', {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json' },
                 body: JSON.stringify({
                     primitives: this.mappedPrimitives.primitives,
-                    tempo: this.mappedPrimitives.tempo || 174
+                    tempo: this.mappedPrimitives.tempo || 174,
+                    ...genreParams
                 })
             });
 
@@ -221,7 +240,6 @@ class ProDnBApp {
         this.fileInfo.classList.add('hidden');
         this.uploadArea.classList.remove('hidden');
         this.generateBtn.disabled = true;
-        if (this.generateStreamBtn) this.generateStreamBtn.disabled = true;
     }
 
     async generateStrudel() {
@@ -230,54 +248,16 @@ class ProDnBApp {
             return;
         }
 
-        this.setGeneratingState(true, false);
-        this.strudelCode.textContent = '// Generating Strudel code...';
+        this.setGeneratingState(true);
+        this.strudelCode.textContent = '// Generating...';
         this.strudelCode.style.color = '#666666';
 
         try {
-            const response = await fetch('/api/generate', {
-                method: 'POST',
-                headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify({ file_path: this.uploadedFilePath })
-            });
-
-            const result = await response.json();
-
-            if (!response.ok || !result.success) {
-                throw new Error(result.error || 'Generation failed');
-            }
-
-            this.strudelCode.textContent = result.code;
-            this.strudelCode.style.color = '';
-            this.copyBtn.disabled = false;
-            this.clearBtn.classList.remove('hidden');
-
-            this.showStatus('Strudel code generated successfully!', 'success');
-        } catch (error) {
-            console.error('Generation error:', error);
-            this.strudelCode.textContent = `// Error: ${error.message}`;
-            this.strudelCode.style.color = '#b91c1c';
-            this.showStatus(error.message || 'Failed to generate code', 'error');
-        } finally {
-            this.setGeneratingState(false, false);
-        }
-    }
-
-    async generateStrudelStream() {
-        if (!this.uploadedFilePath) {
-            this.showStatus('Please upload a PDB file first', 'error');
-            return;
-        }
-
-        this.setGeneratingState(false, true);
-        this.strudelCode.textContent = '// Streaming...';
-        this.strudelCode.style.color = '#666666';
-
-        try {
+            const genreParams = this.getGenreParams();
             const response = await fetch('/api/generate/stream', {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify({ file_path: this.uploadedFilePath })
+                body: JSON.stringify({ file_path: this.uploadedFilePath, ...genreParams })
             });
 
             if (!response.ok) {
@@ -326,42 +306,33 @@ class ProDnBApp {
                 finalCode = finalCode.replace(/^```(?:javascript|js|strudel)?\n?/, '').replace(/\n?```$/, '').trim();
             }
             finalCode = this.fixEuclideanOrder(finalCode);
+            finalCode = this.fixTidalToJs(finalCode);
 
             this.strudelCode.textContent = finalCode || code;
             this.strudelCode.style.color = '';
             this.copyBtn.disabled = false;
             this.clearBtn.classList.remove('hidden');
 
-            this.showStatus('Strudel code streamed successfully!', 'success');
+            this.showStatus('Strudel code generated successfully!', 'success');
         } catch (error) {
             console.error('Stream error:', error);
             this.strudelCode.textContent = `// Error: ${error.message}`;
             this.strudelCode.style.color = '#b91c1c';
-            this.showStatus(error.message || 'Failed to stream', 'error');
+            this.showStatus(error.message || 'Failed to generate code', 'error');
         } finally {
-            this.setGeneratingState(false, true);
+            this.setGeneratingState(false);
         }
     }
 
-    setGeneratingState(isGenerating, isStream) {
-        if (isStream) {
-            this.generateStreamBtn.disabled = isGenerating;
-            if (isGenerating) {
-                this.streamBtnText.classList.add('hidden');
-                this.streamBtnLoading.classList.remove('hidden');
-            } else {
-                this.streamBtnText.classList.remove('hidden');
-                this.streamBtnLoading.classList.add('hidden');
-            }
+    setGeneratingState(isGenerating) {
+        if (!this.generateBtn) return;
+        this.generateBtn.disabled = isGenerating;
+        if (isGenerating) {
+            this.btnText?.classList.add('hidden');
+            this.btnLoading?.classList.remove('hidden');
         } else {
-            this.generateBtn.disabled = isGenerating;
-            if (isGenerating) {
-                this.btnText.classList.add('hidden');
-                this.btnLoading.classList.remove('hidden');
-            } else {
-                this.btnText.classList.remove('hidden');
-                this.btnLoading.classList.add('hidden');
-            }
+            this.btnText?.classList.remove('hidden');
+            this.btnLoading?.classList.add('hidden');
         }
     }
 
@@ -406,6 +377,16 @@ class ProDnBApp {
     /** Fix reversed euclidean: (5,8)bd -> bd(5,8) */
     fixEuclideanOrder(code) {
         return code.replace(/"\((\d+),(\d+)\)(bd|sd|hh|cp|rim|oh|perc)"/g, '"$3($1,$2)"');
+    }
+
+    /** Convert Tidal syntax to Strudel JS: remove d1 $, stack([...]) -> stack(...) */
+    fixTidalToJs(code) {
+        let out = code.replace(/\bd\d+\s*\$?\s*/g, '');
+        out = out.replace(/stack\(\s*\[/g, 'stack(');
+        // Replace only the last ]) to avoid breaking nested stacks
+        const last = out.lastIndexOf('])');
+        if (last >= 0) out = out.slice(0, last) + ')' + out.slice(last + 2);
+        return out;
     }
 }
 

@@ -200,7 +200,7 @@ ProDnB outputs valid Strudel (TidalCycles) mini-notation:
 | `[]` | `[bd sd]` | Subdivide time |
 | `(beats,segments)` | `bd(5,8)` | Euclidean rhythm |
 | `gain(N)` | `.gain(0.8)` | Volume 0–1 |
-| `stack([...])` | `stack(s("bd"), s("hh*8"))` | Layer patterns |
+| `stack(...)` | `stack(s("bd"), s("hh*8"))` | Layer patterns (JS variadic, no array) |
 | `setcps(N)` | `setcps(0.725)` | Tempo (174 BPM ≈ 0.725) |
 
 **Drum samples**: `bd`, `sd`, `hh`, `cp`, `rim`, `oh` (open hat), `perc`, `misc`, `fx`

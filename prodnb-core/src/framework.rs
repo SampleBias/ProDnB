@@ -6,6 +6,7 @@
 
 use crate::protein::Protein;
 use crate::features::FeatureExtractor;
+use crate::genre::GenreParams;
 use crate::strudel::{protein_to_primitives, StrudelPrimitive};
 use anyhow::Result;
 use serde::{Serialize, Deserialize};
@@ -43,14 +44,39 @@ pub struct ProteinFramework {
 
     /// Tempo in BPM (default 174 for DnB)
     pub tempo: u16,
+
+    /// DnB subgenre for arrangement context
+    #[serde(default)]
+    pub genre: Option<String>,
+
+    /// Musical key, e.g. "C", "Am"
+    #[serde(default)]
+    pub key: Option<String>,
+
+    /// Octave for melodic content (2–5)
+    #[serde(default)]
+    pub octave: Option<u8>,
+
+    /// Include melodic layers
+    #[serde(default)]
+    pub melodic: bool,
 }
 
 impl ProteinFramework {
-    /// Build framework from protein. CPU path; GPU will replace this later.
-    /// Stage 1: deterministic mapping produces primitives; LLM arranges in stage 2.
+    /// Build framework from protein (no genre params). Uses default mapping.
     pub fn from_protein(protein: &Protein) -> Result<Self> {
+        Self::from_protein_with_params(protein, 174, None)
+    }
+
+    /// Build framework from protein with genre and tonal params.
+    /// Stage 1: deterministic mapping produces primitives; LLM arranges in stage 2.
+    pub fn from_protein_with_params(
+        protein: &Protein,
+        bpm: u16,
+        genre_params: Option<&GenreParams>,
+    ) -> Result<Self> {
         let features = FeatureExtractor::extract(protein)?;
-        let mapped = protein_to_primitives(protein, 174)?;
+        let mapped = protein_to_primitives(protein, bpm, genre_params)?;
 
         let mut element_counts: HashMap<String, usize> = HashMap::new();
         for atom in protein.all_atoms() {
@@ -78,6 +104,10 @@ impl ProteinFramework {
             chain_lengths,
             primitives: mapped.primitives,
             tempo: mapped.tempo,
+            genre: mapped.genre,
+            key: mapped.key,
+            octave: mapped.octave,
+            melodic: mapped.melodic,
         })
     }
 

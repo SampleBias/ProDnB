@@ -127,6 +127,61 @@ section h2 {
     margin-top: 0.5rem;
 }
 
+/* Genre & Tonal Options */
+.genre-section {
+    padding: 0;
+}
+
+.genre-options {
+    display: flex;
+    flex-direction: column;
+    gap: 1rem;
+}
+
+.genre-row {
+    display: flex;
+    align-items: center;
+    gap: 1rem;
+}
+
+.genre-row label {
+    min-width: 120px;
+    font-size: 0.9rem;
+    font-weight: 500;
+}
+
+.genre-select {
+    flex: 1;
+    max-width: 280px;
+    padding: 0.5rem 0.75rem;
+    font-size: 0.95rem;
+    border: 1px solid var(--border-color);
+    border-radius: 4px;
+    background: var(--bg-color);
+}
+
+.genre-input {
+    width: 80px;
+    padding: 0.5rem 0.75rem;
+    font-size: 0.95rem;
+    border: 1px solid var(--border-color);
+    border-radius: 4px;
+}
+
+.genre-checkbox {
+    gap: 0.5rem;
+}
+
+.genre-checkbox-input {
+    width: 18px;
+    height: 18px;
+}
+
+.genre-checkbox label {
+    min-width: auto;
+    font-weight: 400;
+}
+
 /* File Info */
 .file-info {
     margin-top: 1rem;
