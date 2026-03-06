@@ -143,6 +143,22 @@ Format:
 ```
 Include inline comments on each const: `// slider = [biological meaning]`
 
+## Visual Feedback (REQUIRED for ProDnB)
+Every layer MUST include `.color("...")` and an inline visual function (`._punchcard()`, `._pianoroll()`, `._spiral()`, or `._spectrum()`).
+This creates a visual journey aligned with the music. Rules:
+- Use the inline `_` prefix form (e.g. `._spiral()`) so each layer gets its own visualization.
+- Drums/percussion: prefer `._punchcard({ fillActive: 1 })` or `._spiral({ steady: 0.9, thickness: 3, fade: 1 })`.
+- Melodic/pad: prefer `._pianoroll({ labels: 1, fillActive: 1, autorange: 1 })`.
+- Bass: prefer `._spiral({ steady: 0.95, thickness: 5, fade: 1 })` or `._punchcard({ smear: 1 })`.
+- Choose colors that contrast between layers. Use warm tones (#FF6B35, coral, orange) for driving layers, cool tones (cyan, teal, #00B4D8) for atmospheric layers, vivid tones (magenta, #8338EC, hotpink) for accent layers.
+- You can pattern colors: `.color("cyan magenta")` alternates per event.
+
+Example visual layer:
+```
+const drums = s("bd(5,8)").gain(slider(0.9, 0, 1))
+  .color("#FF6B35")._punchcard({ fillActive: 1, cycles: 4 })
+```
+
 ## Common Mistakes to Avoid
 1. (5,8)bd -> use bd(5,8)
 2. Multiple separate stack() calls -> only the last plays! Use const for layers, then ONE stack(drums, bass, pad, lead)
@@ -151,6 +167,7 @@ Include inline comments on each const: `// slider = [biological meaning]`
 5. n() melodic layers silent -> use .s("triangle") instead of sine/sawtooth; ensure .gain() is set; user may need to click play area first.
 6. sound "bd" -> use s("bd")
 7. d1 $ or stack([...]) -> use const + stack(p1, p2, ...) for JS mode
+8. Missing visual feedback -> every layer needs .color() and an inline visual (._punchcard(), ._pianoroll(), ._spiral(), or ._spectrum())
 
 ## Mode Guard (for LLM/linting)
 - If output contains `d1` or `$` → convert to JS or reject with: "Tidal syntax detected; use stack(p1, p2, ...) for Strudel default REPL."

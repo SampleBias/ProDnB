@@ -801,13 +801,147 @@ pub struct SliderValues {
     pub energy: Option<f64>,
 }
 
-/// Assemble Strudel code from primitives. Intensity controls use slider() for Strudel.cc UI.
-/// Layers with gain_pattern get per-step dynamics; others get interactive sliders.
+// ---------------------------------------------------------------------------
+// Visual feedback: protein-structure-driven Strudel visualization
+// ---------------------------------------------------------------------------
+
+struct VisualPreset {
+    function: &'static str,
+    options: &'static str,
+}
+
+const KICK_VISUALS: &[VisualPreset] = &[
+    VisualPreset { function: "_punchcard", options: "{ fillActive: 1, cycles: 4 }" },
+    VisualPreset { function: "_spiral",    options: "{ steady: 0.95, thickness: 5, fade: 1 }" },
+    VisualPreset { function: "_punchcard", options: "{ hideInactive: 1, fillActive: 1, smear: 1, cycles: 4 }" },
+];
+
+const SNARE_VISUALS: &[VisualPreset] = &[
+    VisualPreset { function: "_pianoroll", options: "{ fillActive: 1, stroke: 1, cycles: 4 }" },
+    VisualPreset { function: "_punchcard", options: "{ fillActive: 1, stroke: 1, cycles: 4 }" },
+    VisualPreset { function: "_spiral",    options: "{ steady: 0.92, thickness: 3, colorizeInactive: 1 }" },
+];
+
+const HATS_VISUALS: &[VisualPreset] = &[
+    VisualPreset { function: "_spiral",    options: "{ steady: 0.96, thickness: 3, fade: 1 }" },
+    VisualPreset { function: "_spiral",    options: "{ steady: 0.90, thickness: 2, fade: 1, colorizeInactive: 1 }" },
+    VisualPreset { function: "_punchcard", options: "{ hideInactive: 1, fillActive: 1, cycles: 4 }" },
+];
+
+const PERC_VISUALS: &[VisualPreset] = &[
+    VisualPreset { function: "_punchcard", options: "{ fillActive: 1, hideInactive: 1, cycles: 4 }" },
+    VisualPreset { function: "_pianoroll", options: "{ fillActive: 1, cycles: 6, stroke: 1 }" },
+    VisualPreset { function: "_spiral",    options: "{ steady: 0.88, thickness: 4, colorizeInactive: 1, fade: 1 }" },
+];
+
+const CONTACT_VISUALS: &[VisualPreset] = &[
+    VisualPreset { function: "_spiral",    options: "{ steady: 0.90, thickness: 4, colorizeInactive: 1 }" },
+    VisualPreset { function: "_punchcard", options: "{ fillActive: 1, hideInactive: 1 }" },
+    VisualPreset { function: "_spiral",    options: "{ steady: 0.85, thickness: 3, fade: 1 }" },
+];
+
+const MELODIC_VISUALS: &[VisualPreset] = &[
+    VisualPreset { function: "_pianoroll", options: "{ labels: 1, fillActive: 1, autorange: 1, cycles: 4 }" },
+    VisualPreset { function: "_pianoroll", options: "{ fillActive: 1, stroke: 1, autorange: 1, cycles: 4 }" },
+    VisualPreset { function: "_spiral",    options: "{ steady: 0.94, thickness: 3, fade: 1 }" },
+];
+
+const GENERIC_VISUALS: &[VisualPreset] = &[
+    VisualPreset { function: "_punchcard", options: "{ fillActive: 1 }" },
+    VisualPreset { function: "_spiral",    options: "{ steady: 0.92, thickness: 3 }" },
+    VisualPreset { function: "_pianoroll", options: "{ fillActive: 1, cycles: 4 }" },
+];
+
+const PALETTE_WARM:  &[&str] = &["#FF6B35", "#FF9F1C", "#FFCA28", "#E8751A", "coral",    "orange"];
+const PALETTE_COOL:  &[&str] = &["cyan",    "#00B4D8", "#0096C7", "#48CAE4", "teal",    "#7491D2"];
+const PALETTE_VIVID: &[&str] = &["magenta", "#FF006E", "#8338EC", "#FB5607", "hotpink", "#E040FB"];
+const PALETTE_EARTH: &[&str] = &["#A7C957", "#6A994E", "#BC6C25", "#DDA15E", "#606C38", "#FEFAE0"];
+const ALL_PALETTES:  &[&[&str]] = &[PALETTE_WARM, PALETTE_COOL, PALETTE_VIVID, PALETTE_EARTH];
+
+/// Deterministic seed from protein structural data for visual selection.
+fn compute_visual_seed(mapped: &MappedOutput) -> u64 {
+    let mut seed: u64 = mapped.tempo as u64;
+    for len in &mapped.chain_lengths {
+        seed = seed.wrapping_mul(31).wrapping_add(*len as u64);
+    }
+    for (el, count) in &mapped.element_counts {
+        for c in el.bytes() {
+            seed = seed.wrapping_mul(37).wrapping_add(c as u64);
+        }
+        seed = seed.wrapping_mul(41).wrapping_add(*count as u64);
+    }
+    seed = seed.wrapping_add((mapped.swing * 1000.0) as u64);
+    seed ^= seed >> 16;
+    seed = seed.wrapping_mul(0x45d9f3b);
+    seed ^= seed >> 16;
+    seed
+}
+
+/// Select a color palette based on protein characteristics.
+fn select_palette(mapped: &MappedOutput, seed: u64) -> &'static [&'static str] {
+    let chain_count = mapped.chain_lengths.len();
+    let total_elements: usize = mapped.element_counts.values().sum();
+
+    if mapped.swing > 0.5 {
+        PALETTE_VIVID
+    } else if chain_count > 4 {
+        PALETTE_WARM
+    } else if total_elements > 3000 {
+        PALETTE_COOL
+    } else {
+        ALL_PALETTES[(seed as usize) % ALL_PALETTES.len()]
+    }
+}
+
+fn layer_visual_presets(layer: Option<&str>) -> &'static [VisualPreset] {
+    match layer {
+        Some("kick")     => KICK_VISUALS,
+        Some("snare")    => SNARE_VISUALS,
+        Some("hats")     => HATS_VISUALS,
+        Some("perc")     => PERC_VISUALS,
+        Some("contacts") => CONTACT_VISUALS,
+        Some("melodic")  => MELODIC_VISUALS,
+        _                => GENERIC_VISUALS,
+    }
+}
+
+/// Build the `.color("...")._{visual}({...})` suffix for a layer.
+fn build_visual_suffix(
+    layer: Option<&str>,
+    palette: &[&str],
+    seed: u64,
+    layer_idx: usize,
+) -> String {
+    let presets = layer_visual_presets(layer);
+    let preset_idx = ((seed.wrapping_add(layer_idx as u64 * 7)) as usize) % presets.len();
+    let preset = &presets[preset_idx];
+
+    let color1 = palette[layer_idx % palette.len()];
+    let color2 = palette[(layer_idx + 1) % palette.len()];
+
+    let use_dual = matches!(layer, Some("hats") | Some("perc"));
+    let color_str = if use_dual {
+        format!("{} {}", color1, color2)
+    } else {
+        color1.to_string()
+    };
+
+    format!(
+        r#".color("{}").{}({})"#,
+        color_str, preset.function, preset.options
+    )
+}
+
+/// Assemble Strudel code from primitives with protein-driven visual feedback.
+/// Each layer gets a deterministic color + inline visualization derived from
+/// the protein's structural signature.
 pub fn assemble_strudel(mapped: &MappedOutput, sliders: Option<&SliderValues>) -> String {
     let cps = mapped.tempo as f64 / 60.0 / 4.0;
+    let seed = compute_visual_seed(mapped);
+    let palette = select_palette(mapped, seed);
 
     let mut parts = Vec::new();
-    for p in &mapped.primitives {
+    for (idx, p) in mapped.primitives.iter().enumerate() {
         let gain = if let Some(s) = sliders {
             let base = match p.layer.as_deref() {
                 Some("kick") => s.kick.unwrap_or(p.gain),
@@ -820,14 +954,13 @@ pub fn assemble_strudel(mapped: &MappedOutput, sliders: Option<&SliderValues>) -
             p.gain
         };
 
-        // Per-step gain pattern from structural fingerprint, or interactive slider fallback
         let gain_expr = if let Some(ref gp) = p.gain_pattern {
             format!(r#""{}""#, gp)
         } else {
             format!("slider({:.2}, 0, 1)", gain)
         };
 
-        let pattern = if p.primitive_type == "euclidean" {
+        let base_pattern = if p.primitive_type == "euclidean" {
             if let (Some(sound), Some(beats), Some(segments)) = (p.sound.as_ref(), p.beats, p.segments) {
                 let eucl = format!("{}({},{})", sound, beats, segments);
                 format!(r#"s("{}").gain({})"#, eucl, gain_expr)
@@ -843,7 +976,9 @@ pub fn assemble_strudel(mapped: &MappedOutput, sliders: Option<&SliderValues>) -
         } else {
             continue;
         };
-        parts.push(pattern);
+
+        let visual = build_visual_suffix(p.layer.as_deref(), palette, seed, idx);
+        parts.push(format!("{}\n    {}", base_pattern, visual));
     }
 
     let stack_body = parts.join(",\n  ");
@@ -855,7 +990,7 @@ pub fn assemble_strudel(mapped: &MappedOutput, sliders: Option<&SliderValues>) -
 
     format!(
         r#"// ProDnB assembled from primitives (Strudel JS mode)
-// Layers with per-step gain patterns reflect the protein's B-factor dynamics.{}
+// Visual feedback: colors + visuals derived from protein 3D structure.{}
 setcps({})
 
 stack(
@@ -876,9 +1011,9 @@ pub fn default_strudel_code(bpm: u16) -> String {
 setcps({})
 
 stack(
-  s("bd*4"),
-  s("sd ~ ~ sd"),
-  s("hh*8")
+  s("bd*4").color("cyan")._punchcard({{ fillActive: 1, cycles: 4 }}),
+  s("sd ~ ~ sd").color("magenta")._pianoroll({{ fillActive: 1, stroke: 1, cycles: 4 }}),
+  s("hh*8").color("white")._spiral({{ steady: 0.96, thickness: 3, fade: 1 }})
 )
 "#,
         cps
