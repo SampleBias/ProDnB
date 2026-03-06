@@ -1,6 +1,6 @@
 # Strudel.cc Knowledge Base for ProDnB
 
-Reference for generating clean, executable Strudel code. Use this when arranging DnB patterns.
+Reference for generating clean, executable Strudel code. Use this when arranging DnB and Trance patterns.
 
 ## Critical Syntax Rules
 

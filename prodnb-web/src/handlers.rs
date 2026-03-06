@@ -318,9 +318,10 @@ async fn infer_beat_design_from_function(function_text: &str) -> Result<Inferred
 Instruction: {}
 
 Respond with ONLY valid JSON (no markdown, no explanation):
-{{"genre": "liquid"|"jump_up"|"neurofunk"|"dancefloor"|"jungle", "bpm": 160-185, "key": "C:minor"|"G:minor"|"A:minor"|"D:minor"|"E:minor"|etc or null (use Root:minor format, NOT Gm), "octave": 2-5, "melodic": true|false}}
+{{"genre": "liquid"|"jump_up"|"neurofunk"|"dancefloor"|"jungle"|"trance", "bpm": 120-185, "key": "C:minor"|"G:minor"|"A:minor"|"D:minor"|"E:minor"|etc or null (use Root:minor format, NOT Gm), "octave": 2-5, "melodic": true|false}}
 
-Genre mapping: liquid=soulful/melodic, jump_up=high-energy/wobble, neurofunk=dark/techy, dancefloor=anthemic, jungle=breakbeat-heavy.
+Genre mapping: liquid=soulful/melodic, jump_up=high-energy/wobble, neurofunk=dark/techy, dancefloor=anthemic, jungle=breakbeat-heavy, trance=euphoric/driving/arpeggiated.
+BPM ranges: DnB genres typically 160-185, trance typically 128-145. Choose based on the instruction's energy.
 Octave: 2=sub, 3=typical bass, 4=mid, 5=high. Default 3 if unsure."#,
         function_text
     );
@@ -365,8 +366,15 @@ Octave: 2=sub, 3=typical bass, 4=mid, 5=high. Default 3 if unsure."#,
         .trim_end_matches("```")
         .trim();
 
-    let inferred: InferredBeatDesign = serde_json::from_str(content)
-        .context("Parse inferred JSON")?;
+    // The LLM may wrap JSON in prose or return multiple JSON objects; extract the first {...}
+    let json_str = if let (Some(start), Some(end)) = (content.find('{'), content.rfind('}')) {
+        &content[start..=end]
+    } else {
+        content
+    };
+
+    let inferred: InferredBeatDesign = serde_json::from_str(json_str)
+        .with_context(|| format!("Parse inferred JSON from: {}", &json_str[..json_str.len().min(200)]))?;
 
     Ok(inferred)
 }
@@ -547,8 +555,10 @@ async fn resolve_genre_params(req: &GenerateRequest) -> Result<(u16, Option<Genr
             return Ok((inferred.bpm, Some(params)));
         }
     }
-    let bpm = req.bpm.unwrap_or(174);
     let params = build_genre_params(req);
+    let bpm = req.bpm.unwrap_or_else(|| {
+        params.as_ref().map(|p| p.genre.default_bpm()).unwrap_or(174)
+    });
     Ok((bpm, params))
 }
 
@@ -830,7 +840,7 @@ RULES:
 - CRITICAL: In Strudel JS mode, ONLY THE LAST EVALUATED EXPRESSION PLAYS. Multiple separate stack() calls will NOT all play — each replaces the previous. You MUST: (1) build each layer as const (e.g. const drums = stack(...), const bass = n(...)), (2) output ONE final stack(drums, bass, pad, lead) at the end. This is the ONLY way all layers play together.
 - If you use .acidenv() on bass or lead, you MUST add register('acidenv', (x, pat) => pat.lpf(100).lpenv(x*9).lps(0.2).lpd(0.12)) right after setcps(). Strudel does not have acidenv built-in.
 - BLEND elements from the beat templates above — mix kicks, basses, pads, percussion from different templates for unique results
-- If framework has genre, key, octave, melodic: match that subgenre style (liquid/jump_up/neurofunk/dancefloor/jungle)
+- If framework has genre, key, octave, melodic: match that subgenre style (liquid/jump_up/neurofunk/dancefloor/jungle/trance). Trance uses four-on-the-floor kick, offbeat clap, offbeat open hats, arpeggiated melodic layers, long builds, euphoric pads — typically 128-145 BPM
 - Strudel default REPL is JS: NO d1 $, NO stack([...]). Use const for layers, then ONE stack(layer1, layer2, ...).
 - For melodic layers: n(\"0 2 4 6\").scale(\"C:minor\").s(\"triangle\").gain(slider(...)). Prefer triangle over sine/sawtooth (most reliable). Add ._pianoroll() if desired.
 - REPRESENTATION KEY: Start with a comment block mapping each layer (drums, bass, pad, lead) to the protein's biological function. Use framework pdb_id and title. Example: \"// BASS: oxygen transport pulse — slider shapes delivery intensity\". This lets the DJ know what each slider controls.
@@ -1000,7 +1010,7 @@ fn ensure_acidenv_registered(code: &str) -> String {
         return format!("{}{}{}", before, register_block, after);
     }
     // No setcps found, prepend at start
-    format!("setcps(174/60/4);\n{}{}", register_block, code)
+    format!("setcps(170/60/4);\n{}{}", register_block, code)
 }
 
 /// Build representation key header string (for streaming or fallback injection)
@@ -1016,7 +1026,8 @@ fn build_representation_key_header(
         .map(|s| {
             let first = s.lines().next().unwrap_or(s).trim();
             if first.len() > 80 {
-                format!("{}...", &first[..77])
+                let truncated: String = first.chars().take(77).collect();
+                format!("{}...", truncated)
             } else {
                 first.to_string()
             }

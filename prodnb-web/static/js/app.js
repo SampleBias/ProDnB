@@ -61,6 +61,8 @@ class ProDnBApp {
         const key = this.keySelect?.value || '';
         const octave = this.octaveInput?.value ? parseInt(this.octaveInput.value, 10) : null;
         const melodic = this.melodicCheck?.checked || false;
+        const bpmInput = document.getElementById('bpmInput');
+        const bpm = bpmInput?.value ? parseInt(bpmInput.value, 10) : null;
         const orchestration = (this.orchestrationInstructionEl?.value || this.orchestrationInstruction || '').trim();
         this.orchestrationInstruction = orchestration || null;
 
@@ -68,7 +70,8 @@ class ProDnBApp {
             ...(genre && { genre }),
             ...(key && { key }),
             ...(octave >= 2 && octave <= 5 && { octave }),
-            ...(melodic && { melodic })
+            ...(melodic && { melodic }),
+            ...(bpm >= 120 && bpm <= 185 && { bpm })
         };
         if (this.selectedFunction) {
             params.selected_function = this.selectedFunction;
@@ -254,7 +257,7 @@ class ProDnBApp {
             const response = await fetch('/api/map', {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify({ file_path: this.uploadedFilePath, bpm: 174, ...genreParams })
+                body: JSON.stringify({ file_path: this.uploadedFilePath, ...genreParams })
             });
 
             if (!response.ok) {
@@ -287,7 +290,7 @@ class ProDnBApp {
                 headers: { 'Content-Type': 'application/json' },
                 body: JSON.stringify({
                     primitives: this.mappedPrimitives.primitives,
-                    tempo: this.mappedPrimitives.tempo || 174,
+                    tempo: this.mappedPrimitives.tempo || 170,
                     ...genreParams
                 })
             });
@@ -482,7 +485,11 @@ class ProDnBApp {
                 const oct = inferred.octave != null ? Math.min(5, Math.max(2, inferred.octave)) : 3;
                 this.octaveInput.value = String(oct);
             }
-            this.showStatus(`Recommended: ${inferred.genre || 'default'} @ ${inferred.bpm || 174} BPM`, 'success');
+            if (inferred.bpm) {
+                const bpmInput = document.getElementById('bpmInput');
+                if (bpmInput) bpmInput.value = inferred.bpm;
+            }
+            this.showStatus(`Recommended: ${inferred.genre || 'default'} @ ${inferred.bpm || 170} BPM`, 'success');
         } catch (error) {
             console.warn('Could not fetch recommendations:', error);
         }

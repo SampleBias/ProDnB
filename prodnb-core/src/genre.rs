@@ -1,8 +1,8 @@
-//! DnB subgenre model and parameters for genre-aware mapping.
+//! Genre model and parameters for genre-aware mapping.
 
 use serde::{Deserialize, Serialize};
 
-/// Drum & Bass subgenres with distinct sound characteristics.
+/// Music genres with distinct sound characteristics.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "snake_case")]
 pub enum DnBGenre {
@@ -16,6 +16,8 @@ pub enum DnBGenre {
     Dancefloor,
     /// Breakbeat-heavy roots - amen breaks, ragga
     Jungle,
+    /// Euphoric, driving - arpeggiated leads, four-on-the-floor kick, long builds
+    Trance,
 }
 
 impl DnBGenre {
@@ -26,6 +28,7 @@ impl DnBGenre {
             "neurofunk" => Some(DnBGenre::Neurofunk),
             "dancefloor" => Some(DnBGenre::Dancefloor),
             "jungle" => Some(DnBGenre::Jungle),
+            "trance" => Some(DnBGenre::Trance),
             _ => None,
         }
     }
@@ -37,6 +40,7 @@ impl DnBGenre {
             DnBGenre::Neurofunk => "neurofunk",
             DnBGenre::Dancefloor => "dancefloor",
             DnBGenre::Jungle => "jungle",
+            DnBGenre::Trance => "trance",
         }
     }
 
@@ -47,6 +51,19 @@ impl DnBGenre {
             DnBGenre::Neurofunk => "Neurofunk",
             DnBGenre::Dancefloor => "Dancefloor",
             DnBGenre::Jungle => "Jungle",
+            DnBGenre::Trance => "Trance",
+        }
+    }
+
+    /// Typical BPM range for this genre. Used as default when no BPM is specified.
+    pub fn default_bpm(&self) -> u16 {
+        match self {
+            DnBGenre::Liquid => 172,
+            DnBGenre::JumpUp => 174,
+            DnBGenre::Neurofunk => 174,
+            DnBGenre::Dancefloor => 174,
+            DnBGenre::Jungle => 168,
+            DnBGenre::Trance => 138,
         }
     }
 }

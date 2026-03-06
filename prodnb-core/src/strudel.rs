@@ -243,6 +243,14 @@ pub fn element_to_sound_for_genre(element: &str, genre: Option<DnBGenre>) -> &'s
             "P" => "rim",  // break-style
             _ => "perc",
         },
+        Some(DnBGenre::Trance) => match el.as_str() {
+            "C" => "bd",   // four-on-the-floor foundation
+            "N" => "cp",   // clap instead of snare (trance convention)
+            "O" => "oh",   // open hats for drive
+            "S" => "hh",   // closed hat texture
+            "P" => "rim",  // accent
+            _ => "perc",
+        },
         None => match el.as_str() {
             "C" => "bd",
             "N" => "sd",
@@ -613,6 +621,7 @@ pub fn protein_to_primitives(
     let (beats, segments) = match genre {
         Some(DnBGenre::Jungle) => ((base_beats + 1).min(7), base_segments.max(8)),
         Some(DnBGenre::Liquid) => ((base_beats.saturating_sub(1)).max(2), base_segments),
+        Some(DnBGenre::Trance) => (4, 4), // four-on-the-floor kick
         _ => (base_beats, base_segments),
     };
 
@@ -643,11 +652,15 @@ pub fn protein_to_primitives(
         gain_pattern: None,
     });
 
-    // Motif drum: secondary-structure-derived pattern (replaces generic snare)
-    let motif_pat = build_motif_pattern(&fingerprint);
+    // Snare/clap layer: structure-derived for DnB, offbeat clap for Trance
+    let snare_pat = if matches!(genre, Some(DnBGenre::Trance)) {
+        "~ cp ~ cp".to_string() // offbeat clap (trance convention)
+    } else {
+        build_motif_pattern(&fingerprint) // secondary-structure-derived
+    };
     primitives.push(StrudelPrimitive {
         primitive_type: "drum".to_string(),
-        pattern: Some(motif_pat),
+        pattern: Some(snare_pat),
         sound: None,
         beats: None,
         segments: None,
@@ -659,11 +672,18 @@ pub fn protein_to_primitives(
         gain_pattern: None,
     });
 
-    // Hi-hats with B-factor gain contour (rigid = crisp, flexible = soft)
-    let hat_gain_pat = build_hat_gain_pattern(&fingerprint, hat_mult, base_gain * 0.6);
+    // Hi-hats / open hats: Trance uses open hats on offbeats, DnB uses closed hat 16ths
+    let (hat_pattern, hat_gain_pat) = if matches!(genre, Some(DnBGenre::Trance)) {
+        let pat = format!("[~ oh]*{}", (hat_mult / 2).max(2));
+        let gpat = build_hat_gain_pattern(&fingerprint, (hat_mult / 2).max(2), base_gain * 0.5);
+        (pat, gpat)
+    } else {
+        let gpat = build_hat_gain_pattern(&fingerprint, hat_mult, base_gain * 0.6);
+        (format!("hh*{}", hat_mult), gpat)
+    };
     primitives.push(StrudelPrimitive {
         primitive_type: "drum".to_string(),
-        pattern: Some(format!("hh*{}", hat_mult)),
+        pattern: Some(hat_pattern),
         sound: None,
         beats: None,
         segments: None,
@@ -709,8 +729,8 @@ pub fn protein_to_primitives(
         });
     }
 
-    // Melodic layer (Liquid, Dancefloor)
-    if melodic && matches!(genre, Some(DnBGenre::Liquid) | Some(DnBGenre::Dancefloor)) {
+    // Melodic layer (Liquid, Dancefloor, Trance)
+    if melodic && matches!(genre, Some(DnBGenre::Liquid) | Some(DnBGenre::Dancefloor) | Some(DnBGenre::Trance)) {
         let scale_key = key.as_deref().unwrap_or("C");
         let scale = if scale_key.contains(':') {
             scale_key.to_string()

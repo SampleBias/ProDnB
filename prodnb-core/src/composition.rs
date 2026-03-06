@@ -4,7 +4,7 @@ use crate::rng::DeterministicRng;
 use serde::{Serialize, Deserialize};
 use anyhow::Result;
 
-const DEFAULT_BPM: u16 = 174;
+const DEFAULT_BPM: u16 = 170;
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
 pub enum Section {

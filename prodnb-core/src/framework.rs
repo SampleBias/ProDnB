@@ -50,7 +50,7 @@ pub struct ProteinFramework {
     /// Deterministic Strudel primitives from PDB mapping (for LLM arrangement)
     pub primitives: Vec<StrudelPrimitive>,
 
-    /// Tempo in BPM (default 174 for DnB)
+    /// Tempo in BPM (genre-dependent: DnB ~170, Trance ~138)
     pub tempo: u16,
 
     /// DnB subgenre for arrangement context
