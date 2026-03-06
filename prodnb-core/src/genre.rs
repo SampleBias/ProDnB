@@ -16,6 +16,14 @@ pub enum DnBGenre {
     Dancefloor,
     /// Breakbeat-heavy roots - amen breaks, ragga
     Jungle,
+    /// Dark, stripped-back, rolling - metallic reese, hard snares
+    Techstep,
+    /// Aggressive, distorted - heavily processed, dark atmosphere
+    Darkstep,
+    /// Half-speed DnB feel - deep, spacious, head-nod groove
+    Halftime,
+    /// Chaotic, hyper-fast - chopped breaks, extreme edits
+    Breakcore,
     /// Euphoric, driving - arpeggiated leads, four-on-the-floor kick, long builds
     Trance,
 }
@@ -28,6 +36,10 @@ impl DnBGenre {
             "neurofunk" => Some(DnBGenre::Neurofunk),
             "dancefloor" => Some(DnBGenre::Dancefloor),
             "jungle" => Some(DnBGenre::Jungle),
+            "techstep" => Some(DnBGenre::Techstep),
+            "darkstep" => Some(DnBGenre::Darkstep),
+            "halftime" | "half_time" => Some(DnBGenre::Halftime),
+            "breakcore" => Some(DnBGenre::Breakcore),
             "trance" => Some(DnBGenre::Trance),
             _ => None,
         }
@@ -40,6 +52,10 @@ impl DnBGenre {
             DnBGenre::Neurofunk => "neurofunk",
             DnBGenre::Dancefloor => "dancefloor",
             DnBGenre::Jungle => "jungle",
+            DnBGenre::Techstep => "techstep",
+            DnBGenre::Darkstep => "darkstep",
+            DnBGenre::Halftime => "halftime",
+            DnBGenre::Breakcore => "breakcore",
             DnBGenre::Trance => "trance",
         }
     }
@@ -51,11 +67,15 @@ impl DnBGenre {
             DnBGenre::Neurofunk => "Neurofunk",
             DnBGenre::Dancefloor => "Dancefloor",
             DnBGenre::Jungle => "Jungle",
+            DnBGenre::Techstep => "Techstep",
+            DnBGenre::Darkstep => "Darkstep",
+            DnBGenre::Halftime => "Halftime",
+            DnBGenre::Breakcore => "Breakcore",
             DnBGenre::Trance => "Trance",
         }
     }
 
-    /// Typical BPM range for this genre. Used as default when no BPM is specified.
+    /// Typical BPM for this genre. Used as default when no BPM is specified.
     pub fn default_bpm(&self) -> u16 {
         match self {
             DnBGenre::Liquid => 172,
@@ -63,6 +83,10 @@ impl DnBGenre {
             DnBGenre::Neurofunk => 174,
             DnBGenre::Dancefloor => 174,
             DnBGenre::Jungle => 168,
+            DnBGenre::Techstep => 174,
+            DnBGenre::Darkstep => 174,
+            DnBGenre::Halftime => 85,
+            DnBGenre::Breakcore => 180,
             DnBGenre::Trance => 138,
         }
     }

@@ -193,10 +193,7 @@ pub fn element_to_sound_dynamic(
 
 /// Genre-aware element-to-sound mapping.
 /// - Liquid: softer hats, pad-like perc
-/// - Jump Up: heavier bd, aggressive sd
-/// - Neurofunk: metallic/industrial (rim, fx)
-/// - Dancefloor: classic bd/sd/hh
-/// - Jungle: break-style perc (cp, rim), amen density
+/// Genre-aware element-to-sound mapping.
 pub fn element_to_sound_for_genre(element: &str, genre: Option<DnBGenre>) -> &'static str {
     let el = element.to_uppercase();
     if el == "H" {
@@ -206,9 +203,9 @@ pub fn element_to_sound_for_genre(element: &str, genre: Option<DnBGenre>) -> &'s
         Some(DnBGenre::Liquid) => match el.as_str() {
             "C" => "bd",
             "N" => "sd",
-            "O" => "hh",  // softer in arrangement
+            "O" => "hh",
             "S" => "cp",
-            "P" => "perc",  // pad-like
+            "P" => "perc",
             _ => "perc",
         },
         Some(DnBGenre::JumpUp) => match el.as_str() {
@@ -216,15 +213,15 @@ pub fn element_to_sound_for_genre(element: &str, genre: Option<DnBGenre>) -> &'s
             "N" => "sd",
             "O" => "hh",
             "S" => "cp",
-            "P" => "perc",  // wobble hints
+            "P" => "perc",
             _ => "perc",
         },
         Some(DnBGenre::Neurofunk) => match el.as_str() {
             "C" => "bd",
             "N" => "sd",
             "O" => "hh",
-            "S" => "rim",  // metallic
-            "P" => "fx",   // industrial
+            "S" => "rim",
+            "P" => "fx",
             _ => "perc",
         },
         Some(DnBGenre::Dancefloor) => match el.as_str() {
@@ -240,15 +237,47 @@ pub fn element_to_sound_for_genre(element: &str, genre: Option<DnBGenre>) -> &'s
             "N" => "sd",
             "O" => "hh",
             "S" => "cp",
-            "P" => "rim",  // break-style
+            "P" => "rim",
+            _ => "perc",
+        },
+        Some(DnBGenre::Techstep) => match el.as_str() {
+            "C" => "bd",
+            "N" => "sd",
+            "O" => "hh",
+            "S" => "rim",   // metallic, stripped
+            "P" => "rim",
+            _ => "perc",
+        },
+        Some(DnBGenre::Darkstep) => match el.as_str() {
+            "C" => "bd",
+            "N" => "sd",
+            "O" => "hh",
+            "S" => "fx",    // distorted, dark
+            "P" => "rim",
+            _ => "perc",
+        },
+        Some(DnBGenre::Halftime) => match el.as_str() {
+            "C" => "bd",
+            "N" => "sd",
+            "O" => "hh",
+            "S" => "cp",    // sparse clap accents
+            "P" => "perc",
+            _ => "perc",
+        },
+        Some(DnBGenre::Breakcore) => match el.as_str() {
+            "C" => "bd",
+            "N" => "sd",
+            "O" => "hh",
+            "S" => "cp",
+            "P" => "fx",    // chaotic texture
             _ => "perc",
         },
         Some(DnBGenre::Trance) => match el.as_str() {
-            "C" => "bd",   // four-on-the-floor foundation
-            "N" => "cp",   // clap instead of snare (trance convention)
-            "O" => "oh",   // open hats for drive
-            "S" => "hh",   // closed hat texture
-            "P" => "rim",  // accent
+            "C" => "bd",
+            "N" => "cp",
+            "O" => "oh",
+            "S" => "hh",
+            "P" => "rim",
             _ => "perc",
         },
         None => match el.as_str() {
@@ -541,9 +570,116 @@ stack(
     )
 }
 
+/// Infer a genre from the protein's 3D structure when the user hasn't chosen one.
+/// Every genre has a structural signature so every protein maps to something.
+///
+/// Priority cascade (first match wins):
+///
+/// | Structural Signal                          | Genre      | Why                                      |
+/// |--------------------------------------------|------------|------------------------------------------|
+/// | High B-factor var + high coil (disordered)  | Breakcore  | Chaotic structure → chaotic breaks       |
+/// | Disulfide-dense (≥3 S-S bonds)              | Techstep   | Cross-linked rigidity → dark, metallic   |
+/// | Beta-sheet rich (>40%)                       | Neurofunk  | Angular, pleated → techy, industrial     |
+/// | High B-factor var + beta-sheet (>25%)        | Darkstep   | Flexible sheets → aggressive, distorted  |
+/// | Alpha-helix dominant (>50%)                  | Liquid     | Smooth coils → soulful, flowing          |
+/// | Small + compact (≤100 res, low Rg)           | Halftime   | Minimal fold → deep, spacious            |
+/// | Multi-chain (≥4 chains)                      | Jungle     | Complex assembly → polyrhythmic breaks   |
+/// | High charged ratio (>30%)                    | JumpUp     | Electrostatic energy → high-energy wobble|
+/// | High aromatic ratio (>15%)                   | Trance     | Ring stacking → euphoric, driving        |
+/// | Large protein (>500 res)                     | Dancefloor | Big & anthemic structure → anthemic beat  |
+/// | Fallback                                     | Dancefloor | Safe, universally works                  |
+pub fn infer_genre_from_structure(
+    protein: &Protein,
+    fingerprint: &StructuralFingerprint,
+) -> Option<DnBGenre> {
+    let features = crate::features::FeatureExtractor::extract(protein).ok();
+    let ms = &fingerprint.motif_summary;
+    let chain_count = protein.chain_count();
+    let residue_count = protein.residue_count();
+
+    let b_factor_variance = features.as_ref().map(|f| f.b_factor_variance).unwrap_or(0.0);
+    let radius_of_gyration = features.as_ref().map(|f| f.radius_of_gyration).unwrap_or(0.0);
+    let charged_ratio = features.as_ref().map(|f| f.charged_residue_ratio).unwrap_or(0.0);
+    let aromatic_ratio = features.as_ref().map(|f| f.aromatic_residue_ratio).unwrap_or(0.0);
+
+    // Breakcore: high disorder (high B-factor variance + mostly coil) → chaotic
+    if b_factor_variance > 60.0 && ms.coil_fraction > 0.5 {
+        return Some(DnBGenre::Breakcore);
+    }
+
+    // Techstep: disulfide-dense (≥3 S-S bonds within 3Å) → dark, cross-linked, metallic
+    let sg_positions: Vec<(f64, f64, f64)> = protein.chains.iter()
+        .flat_map(|c| c.residues.iter())
+        .filter(|r| r.name.eq_ignore_ascii_case("CYS"))
+        .flat_map(|r| r.atoms.iter())
+        .filter(|a| a.name.trim() == "SG")
+        .map(|a| (a.x, a.y, a.z))
+        .collect();
+    let mut disulfide_count = 0;
+    for i in 0..sg_positions.len() {
+        for j in (i + 1)..sg_positions.len() {
+            let (x1, y1, z1) = sg_positions[i];
+            let (x2, y2, z2) = sg_positions[j];
+            let dx = x1 - x2;
+            let dy = y1 - y2;
+            let dz = z1 - z2;
+            if (dx * dx + dy * dy + dz * dz).sqrt() < 3.0 {
+                disulfide_count += 1;
+            }
+        }
+    }
+    if disulfide_count >= 3 {
+        return Some(DnBGenre::Techstep);
+    }
+
+    // Neurofunk: beta-sheet rich (>40%) → angular, techy
+    if ms.sheet_fraction > 0.40 {
+        return Some(DnBGenre::Neurofunk);
+    }
+
+    // Darkstep: moderate sheet + high flexibility → aggressive, distorted
+    if ms.sheet_fraction > 0.25 && b_factor_variance > 40.0 {
+        return Some(DnBGenre::Darkstep);
+    }
+
+    // Liquid: alpha-helix dominant (>50%) → smooth, flowing
+    if ms.helix_fraction > 0.50 {
+        return Some(DnBGenre::Liquid);
+    }
+
+    // Halftime: small, compact protein (≤100 residues, low Rg) → minimal, spacious
+    if residue_count <= 100 && residue_count > 0 && radius_of_gyration < 15.0 {
+        return Some(DnBGenre::Halftime);
+    }
+
+    // Jungle: multi-chain complex (≥4 chains) → polyrhythmic, layered
+    if chain_count >= 4 {
+        return Some(DnBGenre::Jungle);
+    }
+
+    // JumpUp: high charged residue ratio (>30%) → electrostatic energy, punchy
+    if charged_ratio > 0.30 {
+        return Some(DnBGenre::JumpUp);
+    }
+
+    // Trance: high aromatic ratio (>15%) → pi-stacking, euphoric, driving
+    if aromatic_ratio > 0.15 {
+        return Some(DnBGenre::Trance);
+    }
+
+    // Dancefloor: large protein (>500 residues) → big, anthemic
+    if residue_count > 500 {
+        return Some(DnBGenre::Dancefloor);
+    }
+
+    // Fallback: Dancefloor (safe universal default)
+    Some(DnBGenre::Dancefloor)
+}
+
 /// Deterministic mapping: PDB protein → structured Strudel primitives JSON.
 /// Uses structural fingerprint (3D geometry, B-factor contour, fold contacts, secondary
 /// structure motifs) for a pronounced rhythmic fingerprint unique to each protein.
+/// When no genre is explicitly provided, infers one from the protein's structure.
 pub fn protein_to_primitives(
     protein: &Protein,
     bpm: u16,
@@ -551,7 +687,13 @@ pub fn protein_to_primitives(
 ) -> Result<MappedOutput> {
     let features = FeatureExtractor::extract(protein)?;
     let fingerprint = FeatureExtractor::structural_fingerprint(protein);
-    let genre = genre_params.map(|g| g.genre);
+
+    // Use explicit genre if provided, otherwise infer from structure
+    let (genre, genre_was_inferred) = match genre_params.map(|g| g.genre) {
+        Some(g) => (Some(g), false),
+        None => (infer_genre_from_structure(protein, &fingerprint), true),
+    };
+
     let config = MappingConfig::default();
 
     let mut element_counts: HashMap<String, usize> = HashMap::new();
@@ -570,6 +712,13 @@ pub fn protein_to_primitives(
     let key = genre_params.and_then(|g| g.key.clone());
     let octave = genre_params.and_then(|g| g.octave);
     let melodic = genre_params.map(|g| g.melodic).unwrap_or(false);
+
+    // Use genre-aware BPM when genre was inferred and no explicit BPM was given
+    let bpm = if genre_was_inferred && bpm == 170 {
+        genre.map(|g| g.default_bpm()).unwrap_or(bpm)
+    } else {
+        bpm
+    };
 
     // Distance-modulated rhythm seed + B-factor gain contour
     let (rhythm_seed, seed_gain_pattern) =
@@ -621,7 +770,11 @@ pub fn protein_to_primitives(
     let (beats, segments) = match genre {
         Some(DnBGenre::Jungle) => ((base_beats + 1).min(7), base_segments.max(8)),
         Some(DnBGenre::Liquid) => ((base_beats.saturating_sub(1)).max(2), base_segments),
-        Some(DnBGenre::Trance) => (4, 4), // four-on-the-floor kick
+        Some(DnBGenre::Trance) => (4, 4),  // four-on-the-floor
+        Some(DnBGenre::Halftime) => ((base_beats.saturating_sub(1)).max(2), base_segments.max(16)), // spacious, half-speed feel
+        Some(DnBGenre::Breakcore) => ((base_beats + 2).min(7), base_segments.max(12)), // hyper-dense
+        Some(DnBGenre::Darkstep) => (base_beats, base_segments.max(8)),
+        Some(DnBGenre::Techstep) => (base_beats, base_segments),
         _ => (base_beats, base_segments),
     };
 
@@ -652,11 +805,15 @@ pub fn protein_to_primitives(
         gain_pattern: None,
     });
 
-    // Snare/clap layer: structure-derived for DnB, offbeat clap for Trance
-    let snare_pat = if matches!(genre, Some(DnBGenre::Trance)) {
-        "~ cp ~ cp".to_string() // offbeat clap (trance convention)
-    } else {
-        build_motif_pattern(&fingerprint) // secondary-structure-derived
+    // Snare/clap layer: varies by genre
+    let snare_pat = match genre {
+        Some(DnBGenre::Trance) => "~ cp ~ cp".to_string(),
+        Some(DnBGenre::Halftime) => "~ ~ sd ~".to_string(), // snare on 3 only (half-speed feel)
+        Some(DnBGenre::Breakcore) => {
+            let motif = build_motif_pattern(&fingerprint);
+            format!("[{} {}]", motif, "sd cp sd bd") // chop two patterns together
+        }
+        _ => build_motif_pattern(&fingerprint),
     };
     primitives.push(StrudelPrimitive {
         primitive_type: "drum".to_string(),
@@ -672,14 +829,27 @@ pub fn protein_to_primitives(
         gain_pattern: None,
     });
 
-    // Hi-hats / open hats: Trance uses open hats on offbeats, DnB uses closed hat 16ths
-    let (hat_pattern, hat_gain_pat) = if matches!(genre, Some(DnBGenre::Trance)) {
-        let pat = format!("[~ oh]*{}", (hat_mult / 2).max(2));
-        let gpat = build_hat_gain_pattern(&fingerprint, (hat_mult / 2).max(2), base_gain * 0.5);
-        (pat, gpat)
-    } else {
-        let gpat = build_hat_gain_pattern(&fingerprint, hat_mult, base_gain * 0.6);
-        (format!("hh*{}", hat_mult), gpat)
+    // Hi-hats / open hats: genre-specific hat feel
+    let (hat_pattern, hat_gain_pat) = match genre {
+        Some(DnBGenre::Trance) => {
+            let n = (hat_mult / 2).max(2);
+            let gpat = build_hat_gain_pattern(&fingerprint, n, base_gain * 0.5);
+            (format!("[~ oh]*{}", n), gpat)
+        }
+        Some(DnBGenre::Halftime) => {
+            let n = (hat_mult / 2).max(2);
+            let gpat = build_hat_gain_pattern(&fingerprint, n, base_gain * 0.4);
+            (format!("hh*{}", n), gpat) // sparser hats
+        }
+        Some(DnBGenre::Breakcore) => {
+            let n = (hat_mult * 2).min(16);
+            let gpat = build_hat_gain_pattern(&fingerprint, n, base_gain * 0.5);
+            (format!("[hh oh]*{}", n / 2), gpat) // hyper-fast alternating
+        }
+        _ => {
+            let gpat = build_hat_gain_pattern(&fingerprint, hat_mult, base_gain * 0.6);
+            (format!("hh*{}", hat_mult), gpat)
+        }
     };
     primitives.push(StrudelPrimitive {
         primitive_type: "drum".to_string(),
@@ -729,8 +899,8 @@ pub fn protein_to_primitives(
         });
     }
 
-    // Melodic layer (Liquid, Dancefloor, Trance)
-    if melodic && matches!(genre, Some(DnBGenre::Liquid) | Some(DnBGenre::Dancefloor) | Some(DnBGenre::Trance)) {
+    // Melodic layer (genres with melodic affinity)
+    if melodic && matches!(genre, Some(DnBGenre::Liquid) | Some(DnBGenre::Dancefloor) | Some(DnBGenre::Trance) | Some(DnBGenre::Halftime)) {
         let scale_key = key.as_deref().unwrap_or("C");
         let scale = if scale_key.contains(':') {
             scale_key.to_string()

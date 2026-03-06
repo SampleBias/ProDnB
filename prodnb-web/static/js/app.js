@@ -71,7 +71,7 @@ class ProDnBApp {
             ...(key && { key }),
             ...(octave >= 2 && octave <= 5 && { octave }),
             ...(melodic && { melodic }),
-            ...(bpm >= 120 && bpm <= 185 && { bpm })
+            ...(bpm >= 80 && bpm <= 185 && { bpm })
         };
         if (this.selectedFunction) {
             params.selected_function = this.selectedFunction;

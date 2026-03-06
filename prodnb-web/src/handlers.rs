@@ -318,10 +318,10 @@ async fn infer_beat_design_from_function(function_text: &str) -> Result<Inferred
 Instruction: {}
 
 Respond with ONLY valid JSON (no markdown, no explanation):
-{{"genre": "liquid"|"jump_up"|"neurofunk"|"dancefloor"|"jungle"|"trance", "bpm": 120-185, "key": "C:minor"|"G:minor"|"A:minor"|"D:minor"|"E:minor"|etc or null (use Root:minor format, NOT Gm), "octave": 2-5, "melodic": true|false}}
+{{"genre": "liquid"|"jump_up"|"neurofunk"|"dancefloor"|"jungle"|"techstep"|"darkstep"|"halftime"|"breakcore"|"trance", "bpm": 85-185, "key": "C:minor"|"G:minor"|"A:minor"|"D:minor"|"E:minor"|etc or null (use Root:minor format, NOT Gm), "octave": 2-5, "melodic": true|false}}
 
-Genre mapping: liquid=soulful/melodic, jump_up=high-energy/wobble, neurofunk=dark/techy, dancefloor=anthemic, jungle=breakbeat-heavy, trance=euphoric/driving/arpeggiated.
-BPM ranges: DnB genres typically 160-185, trance typically 128-145. Choose based on the instruction's energy.
+Genre mapping: liquid=soulful/melodic, jump_up=high-energy/wobble, neurofunk=dark/techy, dancefloor=anthemic, jungle=breakbeat-heavy, techstep=dark/stripped-back/rolling, darkstep=aggressive/distorted, halftime=half-speed/deep/spacious, breakcore=chaotic/hyper-fast/chopped, trance=euphoric/driving/arpeggiated.
+BPM: liquid/jungle/dancefloor/neurofunk/jump_up/techstep/darkstep=160-178, breakcore=170-185, halftime=80-90, trance=128-145. Choose based on the instruction's energy.
 Octave: 2=sub, 3=typical bass, 4=mid, 5=high. Default 3 if unsure."#,
         function_text
     );
@@ -840,7 +840,7 @@ RULES:
 - CRITICAL: In Strudel JS mode, ONLY THE LAST EVALUATED EXPRESSION PLAYS. Multiple separate stack() calls will NOT all play — each replaces the previous. You MUST: (1) build each layer as const (e.g. const drums = stack(...), const bass = n(...)), (2) output ONE final stack(drums, bass, pad, lead) at the end. This is the ONLY way all layers play together.
 - If you use .acidenv() on bass or lead, you MUST add register('acidenv', (x, pat) => pat.lpf(100).lpenv(x*9).lps(0.2).lpd(0.12)) right after setcps(). Strudel does not have acidenv built-in.
 - BLEND elements from the beat templates above — mix kicks, basses, pads, percussion from different templates for unique results
-- If framework has genre, key, octave, melodic: match that subgenre style (liquid/jump_up/neurofunk/dancefloor/jungle/trance). Trance uses four-on-the-floor kick, offbeat clap, offbeat open hats, arpeggiated melodic layers, long builds, euphoric pads — typically 128-145 BPM
+- If framework has genre, key, octave, melodic: match that subgenre style. Trance: four-on-the-floor kick, offbeat clap, offbeat open hats, arpeggiated melodic layers, euphoric pads, 128-145 BPM. Halftime: half-speed feel, snare on 3, deep/spacious, 80-90 BPM. Breakcore: hyper-fast chopped breaks, extreme edits, 170-185 BPM. Techstep: dark/stripped-back, rolling metallic reese. Darkstep: aggressive/distorted atmosphere. All DnB subgenres: 160-178 BPM.
 - Strudel default REPL is JS: NO d1 $, NO stack([...]). Use const for layers, then ONE stack(layer1, layer2, ...).
 - For melodic layers: n(\"0 2 4 6\").scale(\"C:minor\").s(\"triangle\").gain(slider(...)). Prefer triangle over sine/sawtooth (most reliable). Add ._pianoroll() if desired.
 - REPRESENTATION KEY: Start with a comment block mapping each layer (drums, bass, pad, lead) to the protein's biological function. Use framework pdb_id and title. Example: \"// BASS: oxygen transport pulse — slider shapes delivery intensity\". This lets the DJ know what each slider controls.
