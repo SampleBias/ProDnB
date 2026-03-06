@@ -128,8 +128,8 @@ pub async fn protein_function(
         }
     };
 
-    let api_key = std::env::var("SERP_API_Key").map_err(|_| {
-        error::ErrorInternalServerError("SERP_API_Key not set in .env")
+    let api_key = std::env::var("SERP_API_KEY").map_err(|_| {
+        error::ErrorInternalServerError("SERP_API_KEY not set in .env")
     })?;
 
     let url = format!(
