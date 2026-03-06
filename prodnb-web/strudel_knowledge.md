@@ -118,8 +118,8 @@ When framework includes `genre`, match the style:
 - **jungle**: Breakbeat-heavy. Amen-style breaks, ragga. Dense percussion, cp/rim.
 
 ## Tonal Syntax (for melodic layers)
-- scale("C:minor") or scale("Am") - set key
-- n("0 2 4 6").scale("C:minor").s("sawtooth") - melodic pattern
+- scale("Root:minor") — Strudel requires colon format. Use "G:minor", "A:minor", "C:minor" — NOT "Gm" or "Am".
+- n("0 2 4 6").scale("C:minor").s("triangle") - melodic pattern
 - transpose(N) - semitones
 - Octave in scale: "C4:minor" defaults root to octave 4
 

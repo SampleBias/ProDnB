@@ -488,14 +488,14 @@ class ProDnBApp {
         }
     }
 
-    /** Normalize API key (e.g. "C:minor", "g:minor") to dropdown value ("Cm", "Gm") */
+    /** Normalize API key to Strudel dropdown value (e.g. "Gm" -> "G:minor", "g:minor" -> "G:minor") */
     normalizeKeyForDropdown(key) {
         if (!key || typeof key !== 'string') return '';
         const k = key.trim().toLowerCase();
-        const minorMap = { 'c': 'Cm', 'd': 'Dm', 'e': 'Em', 'f': 'Fm', 'g': 'Gm', 'a': 'Am', 'b': 'Bm' };
+        const minorMap = { 'c': 'C:minor', 'd': 'D:minor', 'e': 'E:minor', 'f': 'F:minor', 'g': 'G:minor', 'a': 'A:minor', 'b': 'B:minor' };
         const minorMatch = k.match(/^([a-g])(?:#|b)?\s*:\s*minor$/);
-        if (minorMatch) return minorMap[minorMatch[1]] || (minorMatch[1].toUpperCase() + 'm');
-        if (['am', 'bm', 'cm', 'dm', 'em', 'fm', 'gm'].includes(k)) return k.charAt(0).toUpperCase() + 'm';
+        if (minorMatch) return (minorMap[minorMatch[1]] || (minorMatch[1].toUpperCase() + ':minor'));
+        if (['am', 'bm', 'cm', 'dm', 'em', 'fm', 'gm'].includes(k)) return minorMap[k.charAt(0)] || (k.charAt(0).toUpperCase() + ':minor');
         return key;
     }
 
@@ -603,6 +603,7 @@ class ProDnBApp {
             finalCode = this.ensureAcidenvRegistered(finalCode);
             finalCode = this.ensureStackOutput(finalCode);
             finalCode = this.synthFallback(finalCode);
+            finalCode = this.fixScaleSyntax(finalCode);
             if (headerChunk && !finalCode.includes('REPRESENTATION KEY')) {
                 finalCode = headerChunk + finalCode;
             }
@@ -710,6 +711,16 @@ class ProDnBApp {
     /** Synth fallback: sine/sawtooth can be silent; triangle is most reliable */
     synthFallback(code) {
         return code.replace(/\.s\("sine"\)/g, '.s("triangle")').replace(/\.s\('sine'\)/g, ".s('triangle')");
+    }
+
+    /** Strudel scale: use "G:minor" not "Gm" */
+    fixScaleSyntax(code) {
+        const map = { Gm: 'G:minor', Am: 'A:minor', Bm: 'B:minor', Cm: 'C:minor', Dm: 'D:minor', Em: 'E:minor', Fm: 'F:minor' };
+        let out = code;
+        for (const [wrong, right] of Object.entries(map)) {
+            out = out.replace(new RegExp(`scale\\s*\\(\\s*["']${wrong}["']\\s*\\)`, 'g'), `scale("${right}")`);
+        }
+        return out;
     }
 
     /** Ensure final stack(drums, bass, pad, lead) so output actually plays */

@@ -4,7 +4,7 @@
 //! for varied, deterministic patterns. See README "Dynamic Element Mapping" section.
 
 use crate::protein::{Protein, AtomContext};
-use crate::features::FeatureExtractor;
+use crate::features::{FeatureExtractor, StructuralFingerprint};
 use crate::genre::{DnBGenre, GenreParams};
 use anyhow::Result;
 use serde::{Serialize, Deserialize};
@@ -52,6 +52,9 @@ pub struct StrudelPrimitive {
     /// Note pattern for melodic layers, e.g. "0 2 4 6"
     #[serde(default)]
     pub note_pattern: Option<String>,
+    /// Per-step gain in Strudel mini-notation, e.g. "0.8 0.5 0.9 0.3"
+    #[serde(default)]
+    pub gain_pattern: Option<String>,
 }
 
 fn default_gain() -> f64 {
@@ -78,6 +81,9 @@ pub struct MappedOutput {
     /// Include melodic layers
     #[serde(default)]
     pub melodic: bool,
+    /// Backbone angle variance → rhythmic swing amount (0.0 = straight, 1.0 = max)
+    #[serde(default)]
+    pub swing: f64,
 }
 
 /// Base-sound pools for dynamic variation (Phase 1). Genre-aware base is rotated within pool.
@@ -248,6 +254,178 @@ pub fn element_to_sound_for_genre(element: &str, genre: Option<DnBGenre>) -> &'s
     }
 }
 
+/// Build a distance-modulated rhythm seed: backbone geometry controls hit density.
+/// Short inter-CA distances (helix) → subdivided hits, long distances (coil) → rests.
+/// Returns (pattern, gain_pattern) where gain follows the B-factor contour.
+fn build_distance_modulated_seed(
+    protein: &Protein,
+    fingerprint: &StructuralFingerprint,
+    genre: Option<DnBGenre>,
+    config: &MappingConfig,
+    target_steps: usize,
+) -> (String, String) {
+    let contexts: Vec<_> = protein
+        .all_atoms_with_context()
+        .filter(|ctx| ctx.atom.element.to_uppercase() != "H")
+        .collect();
+
+    if contexts.is_empty() || fingerprint.distance_rhythm.is_empty() {
+        return ("bd sd hh bd ~ sd".to_string(), "0.8".to_string());
+    }
+
+    let n_dist = fingerprint.distance_rhythm.len();
+    let n_bfac = fingerprint.b_factor_contour.len();
+    let n_ctx = contexts.len();
+
+    let mut pattern_parts = Vec::new();
+    let mut gain_parts = Vec::new();
+
+    for i in 0..target_steps {
+        let t = i as f64 / target_steps as f64;
+
+        let dist_idx = ((t * n_dist as f64) as usize).min(n_dist.saturating_sub(1));
+        let distance = fingerprint.distance_rhythm[dist_idx];
+
+        let bfac_idx = ((t * n_bfac as f64) as usize).min(n_bfac.saturating_sub(1));
+        let bfactor = fingerprint.b_factor_contour[bfac_idx];
+
+        let ctx_idx = ((t * n_ctx as f64) as usize).min(n_ctx - 1);
+        let sound = element_to_sound_dynamic(&contexts[ctx_idx], ctx_idx, genre, config);
+
+        if distance < 0.15 {
+            let next_idx = (ctx_idx + 1).min(n_ctx - 1);
+            let sound2 = element_to_sound_dynamic(&contexts[next_idx], next_idx, genre, config);
+            pattern_parts.push(format!("[{} {}]", sound, sound2));
+        } else if distance > 0.7 {
+            if (ctx_idx + i) % 3 == 0 {
+                pattern_parts.push("~".to_string());
+            } else {
+                pattern_parts.push(sound.to_string());
+            }
+        } else {
+            pattern_parts.push(sound.to_string());
+        }
+
+        let gain = 0.3 + bfactor * 0.7;
+        gain_parts.push(format!("{:.2}", gain.clamp(0.15, 1.0)));
+    }
+
+    (pattern_parts.join(" "), gain_parts.join(" "))
+}
+
+/// Build a motif-derived drum pattern based on secondary structure composition.
+/// Helix → driving 16th feel, Sheet → staccato sparse, Coil → syncopated broken.
+fn build_motif_pattern(fingerprint: &StructuralFingerprint) -> String {
+    const HELIX_PATTERNS: &[&str] = &[
+        "[bd bd] sd [hh bd] sd",
+        "bd [sd sd] hh [bd sd]",
+        "[bd hh] sd [bd bd] hh",
+    ];
+    const SHEET_PATTERNS: &[&str] = &[
+        "bd ~ sd ~ cp ~ sd ~",
+        "bd ~ ~ sd ~ cp ~ ~",
+        "cp ~ bd ~ sd ~ ~ bd",
+    ];
+    const COIL_PATTERNS: &[&str] = &[
+        "~ bd [~ sd] hh ~ [cp ~] bd",
+        "~ [bd ~] ~ sd [~ hh] cp ~",
+        "bd ~ [sd cp] ~ ~ bd [~ hh]",
+    ];
+
+    let seed = (fingerprint.total_ca_atoms * 7) % 3;
+    let summary = &fingerprint.motif_summary;
+
+    let primary = if summary.helix_fraction > summary.sheet_fraction
+        && summary.helix_fraction > summary.coil_fraction
+    {
+        HELIX_PATTERNS[seed]
+    } else if summary.sheet_fraction > summary.coil_fraction {
+        SHEET_PATTERNS[seed]
+    } else {
+        COIL_PATTERNS[seed]
+    };
+
+    primary.to_string()
+}
+
+/// Build a sparse accent layer from long-range 3D fold contacts.
+/// Each contact position → accent hit; everything else → rest. Unique to each fold.
+fn build_contact_accent_pattern(
+    fingerprint: &StructuralFingerprint,
+    steps: usize,
+) -> Option<String> {
+    if fingerprint.contact_accent_positions.is_empty() || fingerprint.total_ca_atoms == 0 {
+        return None;
+    }
+
+    let mut grid = vec![false; steps];
+    for &pos in &fingerprint.contact_accent_positions {
+        let step = (pos * steps) / fingerprint.total_ca_atoms;
+        if step < steps {
+            grid[step] = true;
+        }
+    }
+
+    let active = grid.iter().filter(|&&x| x).count();
+    if active == 0 {
+        return None;
+    }
+    // Thin out if too dense (> 75% filled)
+    if active > steps * 3 / 4 {
+        let mut keep = true;
+        for g in grid.iter_mut() {
+            if *g {
+                if !keep {
+                    *g = false;
+                }
+                keep = !keep;
+            }
+        }
+    }
+
+    let accent_sounds = ["cp", "rim", "cp", "oh"];
+    let mut sound_idx = 0;
+
+    let pattern: Vec<&str> = grid
+        .iter()
+        .map(|&hit| {
+            if hit {
+                let s = accent_sounds[sound_idx % accent_sounds.len()];
+                sound_idx += 1;
+                s
+            } else {
+                "~"
+            }
+        })
+        .collect();
+
+    Some(pattern.join(" "))
+}
+
+/// Build per-step gain pattern for hi-hats from the B-factor contour.
+/// Rigid regions → louder (crisp), flexible regions → softer (flowing).
+fn build_hat_gain_pattern(
+    fingerprint: &StructuralFingerprint,
+    hat_mult: u8,
+    base_gain: f64,
+) -> String {
+    let n = hat_mult as usize;
+    let n_bfac = fingerprint.b_factor_contour.len();
+    if n_bfac == 0 || n == 0 {
+        return format!("{:.2}", base_gain);
+    }
+
+    (0..n)
+        .map(|i| {
+            let idx = (i * n_bfac / n).min(n_bfac - 1);
+            let bfactor = fingerprint.b_factor_contour[idx];
+            let gain = (0.2 + (1.0 - bfactor) * 0.6) * base_gain;
+            format!("{:.2}", gain.clamp(0.1, 1.0))
+        })
+        .collect::<Vec<_>>()
+        .join(" ")
+}
+
 /// Builds a Strudel pattern from protein atoms (uses dynamic mapping).
 pub fn protein_to_strudel(protein: &Protein, bpm: u16) -> String {
     let config = MappingConfig::default();
@@ -356,15 +534,17 @@ stack(
 }
 
 /// Deterministic mapping: PDB protein → structured Strudel primitives JSON.
-/// B-factor variance → euclidean (beats,segments); occupancy → gain; chain length → density.
-/// Genre params adjust element-to-sound mapping, euclidean density, and optional melodic layers.
+/// Uses structural fingerprint (3D geometry, B-factor contour, fold contacts, secondary
+/// structure motifs) for a pronounced rhythmic fingerprint unique to each protein.
 pub fn protein_to_primitives(
     protein: &Protein,
     bpm: u16,
     genre_params: Option<&GenreParams>,
 ) -> Result<MappedOutput> {
     let features = FeatureExtractor::extract(protein)?;
+    let fingerprint = FeatureExtractor::structural_fingerprint(protein);
     let genre = genre_params.map(|g| g.genre);
+    let config = MappingConfig::default();
 
     let mut element_counts: HashMap<String, usize> = HashMap::new();
     for atom in protein.all_atoms() {
@@ -378,42 +558,14 @@ pub fn protein_to_primitives(
         .map(|c| c.residues.len())
         .collect();
 
-    // B-factor variance → euclidean rhythm; genre adjusts density (Jungle denser, Liquid sparser)
-    let (base_beats, base_segments): (u8, u8) = if features.b_factor_variance > 50.0 {
-        (5, 8)
-    } else if features.b_factor_variance > 20.0 {
-        (4, 8)
-    } else {
-        (3, 8)
-    };
-    let (beats, segments) = match genre {
-        Some(DnBGenre::Jungle) => ((base_beats + 1).min(7), base_segments.max(8)),
-        Some(DnBGenre::Liquid) => ((base_beats.saturating_sub(1)).max(2), base_segments),
-        _ => (base_beats, base_segments),
-    };
-
-    // Build rhythm seed from atoms (dynamic mapping: pools, B-factor, occupancy, residue, chain)
-    let config = MappingConfig::default();
-    let contexts: Vec<_> = protein
-        .all_atoms_with_context()
-        .filter(|ctx| ctx.atom.element.to_uppercase() != "H")
-        .collect();
-    let step = (contexts.len() / 24).max(1).min(4);
-    let rhythm_seed: String = contexts
-        .iter()
-        .enumerate()
-        .step_by(step)
-        .take(24)
-        .map(|(i, ctx)| {
-            element_to_sound_dynamic(ctx, i, genre, &config).to_string()
-        })
-        .collect::<Vec<_>>()
-        .join(" ");
-
     let genre_str = genre.map(|g| g.as_str().to_string());
     let key = genre_params.and_then(|g| g.key.clone());
     let octave = genre_params.and_then(|g| g.octave);
     let melodic = genre_params.map(|g| g.melodic).unwrap_or(false);
+
+    // Distance-modulated rhythm seed + B-factor gain contour
+    let (rhythm_seed, seed_gain_pattern) =
+        build_distance_modulated_seed(protein, &fingerprint, genre, &config, 24);
 
     if rhythm_seed.is_empty() {
         return Ok(MappedOutput {
@@ -426,23 +578,57 @@ pub fn protein_to_primitives(
             key,
             octave,
             melodic,
+            swing: 0.0,
         });
     }
 
-    // Avg occupancy for gain (0.1–1.0)
+    // B-factor variance → base euclidean density
+    let (bfac_beats, _): (u8, u8) = if features.b_factor_variance > 50.0 {
+        (5, 8)
+    } else if features.b_factor_variance > 20.0 {
+        (4, 8)
+    } else {
+        (3, 8)
+    };
+
+    // Motif composition adjusts euclidean grid: helix → regular, coil → polyrhythmic, sheet → sparse
+    let motif_beat_adjust: i8 = if fingerprint.motif_summary.helix_fraction > 0.5 {
+        -1
+    } else if fingerprint.motif_summary.coil_fraction > 0.5 {
+        1
+    } else {
+        0
+    };
+    let base_beats = ((bfac_beats as i8 + motif_beat_adjust).max(2) as u8).min(7);
+
+    let base_segments: u8 = if fingerprint.motif_summary.coil_fraction > 0.5 {
+        12
+    } else if fingerprint.motif_summary.sheet_fraction > 0.5 {
+        16
+    } else {
+        8
+    };
+
+    // Genre adjusts on top of structure
+    let (beats, segments) = match genre {
+        Some(DnBGenre::Jungle) => ((base_beats + 1).min(7), base_segments.max(8)),
+        Some(DnBGenre::Liquid) => ((base_beats.saturating_sub(1)).max(2), base_segments),
+        _ => (base_beats, base_segments),
+    };
+
+    // Avg occupancy for base gain
     let atoms: Vec<_> = protein.all_atoms().filter(|a| a.element.to_uppercase() != "H").collect();
     let avg_occupancy: f64 = atoms.iter()
         .map(|a| a.occupancy)
         .sum::<f64>() / atoms.len().max(1) as f64;
     let base_gain = (0.5 + avg_occupancy * 0.5).clamp(0.3, 1.0);
 
-    // Chain length → speed multiplier for hi-hat density
     let max_chain = chain_lengths.iter().copied().max().unwrap_or(8);
     let hat_mult = ((max_chain / 4).max(1).min(8)) as u8;
 
     let mut primitives = Vec::new();
 
-    // Kick: bd with euclidean
+    // Kick: euclidean with structure-aware grid
     primitives.push(StrudelPrimitive {
         primitive_type: "euclidean".to_string(),
         pattern: None,
@@ -454,12 +640,14 @@ pub fn protein_to_primitives(
         scale: None,
         octave: None,
         note_pattern: None,
+        gain_pattern: None,
     });
 
-    // Snare: classic DnB on 2 and 4
+    // Motif drum: secondary-structure-derived pattern (replaces generic snare)
+    let motif_pat = build_motif_pattern(&fingerprint);
     primitives.push(StrudelPrimitive {
         primitive_type: "drum".to_string(),
-        pattern: Some("sd ~ ~ sd".to_string()),
+        pattern: Some(motif_pat),
         sound: None,
         beats: None,
         segments: None,
@@ -468,9 +656,11 @@ pub fn protein_to_primitives(
         scale: None,
         octave: None,
         note_pattern: None,
+        gain_pattern: None,
     });
 
-    // Hi-hats: 16ths from chain length
+    // Hi-hats with B-factor gain contour (rigid = crisp, flexible = soft)
+    let hat_gain_pat = build_hat_gain_pattern(&fingerprint, hat_mult, base_gain * 0.6);
     primitives.push(StrudelPrimitive {
         primitive_type: "drum".to_string(),
         pattern: Some(format!("hh*{}", hat_mult)),
@@ -482,10 +672,11 @@ pub fn protein_to_primitives(
         scale: None,
         octave: None,
         note_pattern: None,
+        gain_pattern: Some(hat_gain_pat),
     });
 
-    // Optional: rhythm from protein as additional layer
-    if !rhythm_seed.is_empty() && element_counts.get("C").copied().unwrap_or(0) > 0 {
+    // Distance-modulated rhythm seed with B-factor velocity contour
+    if element_counts.get("C").copied().unwrap_or(0) > 0 {
         primitives.push(StrudelPrimitive {
             primitive_type: "drum".to_string(),
             pattern: Some(rhythm_seed.clone()),
@@ -497,15 +688,36 @@ pub fn protein_to_primitives(
             scale: None,
             octave: None,
             note_pattern: None,
+            gain_pattern: Some(seed_gain_pattern),
         });
     }
 
-    // Optional: melodic layer (Liquid, Dancefloor)
+    // Contact accent layer: sparse percussion from the protein's 3D fold
+    if let Some(contact_pat) = build_contact_accent_pattern(&fingerprint, 16) {
+        primitives.push(StrudelPrimitive {
+            primitive_type: "drum".to_string(),
+            pattern: Some(contact_pat),
+            sound: None,
+            beats: None,
+            segments: None,
+            gain: base_gain * 0.7,
+            layer: Some("contacts".to_string()),
+            scale: None,
+            octave: None,
+            note_pattern: None,
+            gain_pattern: None,
+        });
+    }
+
+    // Melodic layer (Liquid, Dancefloor)
     if melodic && matches!(genre, Some(DnBGenre::Liquid) | Some(DnBGenre::Dancefloor)) {
         let scale_key = key.as_deref().unwrap_or("C");
-        // "Am" -> "A:minor", "C" -> "C:minor"
-        let root = scale_key.trim_end_matches('m');
-        let scale = format!("{}:minor", root);
+        let scale = if scale_key.contains(':') {
+            scale_key.to_string()
+        } else {
+            let root = scale_key.trim_end_matches('m');
+            format!("{}:minor", root)
+        };
         let oct = octave.unwrap_or(3);
         primitives.push(StrudelPrimitive {
             primitive_type: "melodic".to_string(),
@@ -518,6 +730,7 @@ pub fn protein_to_primitives(
             scale: Some(scale),
             octave: Some(oct),
             note_pattern: Some("0 2 4 6 4 2".to_string()),
+            gain_pattern: None,
         });
     }
 
@@ -531,6 +744,7 @@ pub fn protein_to_primitives(
         key,
         octave,
         melodic,
+        swing: fingerprint.swing,
     })
 }
 
@@ -547,6 +761,7 @@ fn default_primitives(_bpm: u16, _genre: Option<DnBGenre>) -> Vec<StrudelPrimiti
             scale: None,
             octave: None,
             note_pattern: None,
+            gain_pattern: None,
         },
         StrudelPrimitive {
             primitive_type: "drum".to_string(),
@@ -559,6 +774,7 @@ fn default_primitives(_bpm: u16, _genre: Option<DnBGenre>) -> Vec<StrudelPrimiti
             scale: None,
             octave: None,
             note_pattern: None,
+            gain_pattern: None,
         },
         StrudelPrimitive {
             primitive_type: "drum".to_string(),
@@ -571,6 +787,7 @@ fn default_primitives(_bpm: u16, _genre: Option<DnBGenre>) -> Vec<StrudelPrimiti
             scale: None,
             octave: None,
             note_pattern: None,
+            gain_pattern: None,
         },
     ]
 }
@@ -585,7 +802,7 @@ pub struct SliderValues {
 }
 
 /// Assemble Strudel code from primitives. Intensity controls use slider() for Strudel.cc UI.
-/// Piano roll patterns are in the stack output.
+/// Layers with gain_pattern get per-step dynamics; others get interactive sliders.
 pub fn assemble_strudel(mapped: &MappedOutput, sliders: Option<&SliderValues>) -> String {
     let cps = mapped.tempo as f64 / 60.0 / 4.0;
 
@@ -602,8 +819,13 @@ pub fn assemble_strudel(mapped: &MappedOutput, sliders: Option<&SliderValues>) -
         } else {
             p.gain
         };
-        // slider(value, min, max) - Strudel.cc adds interactive sliders in the REPL
-        let gain_expr = format!("slider({:.2}, 0, 1)", gain);
+
+        // Per-step gain pattern from structural fingerprint, or interactive slider fallback
+        let gain_expr = if let Some(ref gp) = p.gain_pattern {
+            format!(r#""{}""#, gp)
+        } else {
+            format!("slider({:.2}, 0, 1)", gain)
+        };
 
         let pattern = if p.primitive_type == "euclidean" {
             if let (Some(sound), Some(beats), Some(segments)) = (p.sound.as_ref(), p.beats, p.segments) {
@@ -624,17 +846,23 @@ pub fn assemble_strudel(mapped: &MappedOutput, sliders: Option<&SliderValues>) -
         parts.push(pattern);
     }
 
-    // JS mode: stack(p1, p2, ...) variadic - no d1 $, no array (Tidal syntax breaks in Strudel default REPL)
     let stack_body = parts.join(",\n  ");
+    let swing_comment = if mapped.swing > 0.1 {
+        format!("\n// Structural swing: {:.2} (from backbone angle variance)", mapped.swing)
+    } else {
+        String::new()
+    };
+
     format!(
         r#"// ProDnB assembled from primitives (Strudel JS mode)
-// Intensity: slider() adds controls in Strudel.cc UI.
+// Layers with per-step gain patterns reflect the protein's B-factor dynamics.{}
 setcps({})
 
 stack(
   {}
 )
 "#,
+        swing_comment,
         cps.max(0.1),
         stack_body
     )

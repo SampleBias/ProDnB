@@ -318,7 +318,7 @@ async fn infer_beat_design_from_function(function_text: &str) -> Result<Inferred
 Instruction: {}
 
 Respond with ONLY valid JSON (no markdown, no explanation):
-{{"genre": "liquid"|"jump_up"|"neurofunk"|"dancefloor"|"jungle", "bpm": 160-185, "key": "C"|"Am"|"Dm"|"Em"|"Gm"|"Cm"|etc or null, "octave": 2-5, "melodic": true|false}}
+{{"genre": "liquid"|"jump_up"|"neurofunk"|"dancefloor"|"jungle", "bpm": 160-185, "key": "C:minor"|"G:minor"|"A:minor"|"D:minor"|"E:minor"|etc or null (use Root:minor format, NOT Gm), "octave": 2-5, "melodic": true|false}}
 
 Genre mapping: liquid=soulful/melodic, jump_up=high-energy/wobble, neurofunk=dark/techy, dancefloor=anthemic, jungle=breakbeat-heavy.
 Octave: 2=sub, 3=typical bass, 4=mid, 5=high. Default 3 if unsure."#,
@@ -615,6 +615,7 @@ pub async fn assemble_from_primitives(
         key: req.key.clone(),
         octave: req.octave,
         melodic: req.melodic.unwrap_or(false),
+        swing: 0.0,
     };
     let code = assemble_strudel(&mapped, req.sliders.as_ref());
     Ok(HttpResponse::Ok().json(serde_json::json!({
@@ -925,6 +926,18 @@ async fn call_groq_api(
     // Synth fallback: sine/sawtooth can be silent; triangle is most reliable
     content = content.replace(".s(\"sine\")", ".s(\"triangle\")");
     content = content.replace(".s('sine')", ".s('triangle')");
+    // Strudel scale: use "G:minor" not "Gm"
+    for (wrong, right) in [
+        ("\"Gm\"", "\"G:minor\""),
+        ("\"Am\"", "\"A:minor\""),
+        ("\"Bm\"", "\"B:minor\""),
+        ("\"Cm\"", "\"C:minor\""),
+        ("\"Dm\"", "\"D:minor\""),
+        ("\"Em\"", "\"E:minor\""),
+        ("\"Fm\"", "\"F:minor\""),
+    ] {
+        content = content.replace(&format!("scale({})", wrong), &format!("scale({})", right));
+    }
 
     Ok(content)
 }

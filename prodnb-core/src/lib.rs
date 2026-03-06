@@ -8,7 +8,7 @@ pub mod strudel;
 pub mod framework;
 
 pub use protein::{Protein, Chain, Residue, Atom};
-pub use features::{ProteinFeatures, FeatureExtractor};
+pub use features::{ProteinFeatures, FeatureExtractor, StructuralFingerprint, BackboneMotif, ResidueClass, MotifSummary};
 pub use composition::{CompositionEngine, ArrangementPlan, DnBParameters};
 pub use strudel::{
     element_to_sound, element_to_sound_dynamic, protein_to_strudel, protein_to_strudel_layered,

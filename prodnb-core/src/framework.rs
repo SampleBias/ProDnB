@@ -68,6 +68,22 @@ pub struct ProteinFramework {
     /// Include melodic layers
     #[serde(default)]
     pub melodic: bool,
+
+    /// Fraction of backbone in alpha-helix conformation (0–1)
+    #[serde(default)]
+    pub helix_fraction: f64,
+    /// Fraction of backbone in beta-sheet conformation (0–1)
+    #[serde(default)]
+    pub sheet_fraction: f64,
+    /// Fraction of backbone in coil/loop conformation (0–1)
+    #[serde(default)]
+    pub coil_fraction: f64,
+    /// Backbone angle variance → rhythmic swing (0 = straight, 1 = max swing)
+    #[serde(default)]
+    pub swing: f64,
+    /// Number of long-range 3D contacts (fold complexity indicator)
+    #[serde(default)]
+    pub fold_contact_count: usize,
 }
 
 impl ProteinFramework {
@@ -84,6 +100,7 @@ impl ProteinFramework {
         genre_params: Option<&GenreParams>,
     ) -> Result<Self> {
         let features = FeatureExtractor::extract(protein)?;
+        let fingerprint = FeatureExtractor::structural_fingerprint(protein);
         let mapped = protein_to_primitives(protein, bpm, genre_params)?;
 
         let mut element_counts: HashMap<String, usize> = HashMap::new();
@@ -118,6 +135,11 @@ impl ProteinFramework {
             key: mapped.key,
             octave: mapped.octave,
             melodic: mapped.melodic,
+            helix_fraction: fingerprint.motif_summary.helix_fraction,
+            sheet_fraction: fingerprint.motif_summary.sheet_fraction,
+            coil_fraction: fingerprint.motif_summary.coil_fraction,
+            swing: fingerprint.swing,
+            fold_contact_count: fingerprint.contact_accent_positions.len(),
         })
     }
 
